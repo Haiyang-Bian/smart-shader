@@ -1,7 +1,11 @@
 <template>
   <div class="app">
     <!-- 侧边栏 - 代码和预览 -->
-    <aside class="sidebar custom-scrollbar" :class="{ collapsed: sidebarCollapsed }">
+    <aside 
+      class="sidebar custom-scrollbar" 
+      :class="{ collapsed: sidebarCollapsed, resizing: isResizingSidebar }"
+      ref="sidebarEl"
+    >
       <div class="sidebar-header">
         <button class="toggle-btn" @click="sidebarCollapsed = !sidebarCollapsed">
           <span v-if="sidebarCollapsed">→</span>
@@ -12,32 +16,57 @@
       
       <div v-if="!sidebarCollapsed" class="sidebar-content">
         <!-- 预览区 -->
-        <div class="preview-section">
+        <div class="preview-section" ref="previewSectionEl">
           <div class="section-title">🎨 实时预览</div>
-          <ShaderRenderer :fragment-shader="currentShader" />
+          <ShaderRenderer 
+            ref="shaderRenderer"
+            :fragment-shader="currentShader" 
+            @screenshot-captured="onScreenshotCaptured"
+          />
         </div>
         
+        <!-- 拖拽条 -->
+        <div 
+          class="resize-handle-horizontal"
+          @mousedown="startResizePreview"
+        />
+        
         <!-- 代码区 -->
-        <div class="code-section">
+        <div class="code-section" ref="codeSectionEl">
           <div class="section-header">
             <span class="section-title">📝 代码</span>
             <button class="icon-btn" @click="resetShader" title="重置">↺</button>
           </div>
-          <CodeEditor v-model="currentShader" />
+          <CodeEditor 
+            v-model="currentShader" 
+            @send-to-chat="onCodeSendToChat"
+          />
         </div>
       </div>
     </aside>
     
+    <!-- 垂直拖拽条 -->
+    <div 
+      v-if="!sidebarCollapsed"
+      class="resize-handle-vertical"
+      @mousedown="startResizeSidebar"
+    />
+    
     <!-- 主体 - 对话框 -->
     <main class="main custom-scrollbar">
       <ChatInterface 
-        @shader-generated="onShaderGenerated" 
+        ref="chatInterface"
+        @shader-generated="onShaderGenerated"
+        @request-screenshot="onRequestScreenshot"
+        @request-code="onRequestCode"
       />
     </main>
   </div>
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
 const defaultShader = `precision mediump float;
 
 uniform float u_time;
@@ -58,6 +87,14 @@ void main() {
 
 const currentShader = ref(defaultShader)
 const sidebarCollapsed = ref(false)
+const chatInterface = ref(null)
+const shaderRenderer = ref(null)
+
+// 拖拽相关
+const sidebarEl = ref(null)
+const previewSectionEl = ref(null)
+const isResizingSidebar = ref(false)
+const isResizingPreview = ref(false)
 
 const onShaderGenerated = (code) => {
   currentShader.value = code
@@ -65,6 +102,128 @@ const onShaderGenerated = (code) => {
 
 const resetShader = () => {
   currentShader.value = defaultShader
+}
+
+// 接收截图并发送到对话
+const onScreenshotCaptured = (imageData) => {
+  if (chatInterface.value) {
+    chatInterface.value.addScreenshot(imageData)
+  }
+}
+
+// 接收代码并发送到对话
+const onCodeSendToChat = (codeData) => {
+  if (chatInterface.value) {
+    chatInterface.value.addCodeBlock(codeData.content)
+  }
+}
+
+// 处理 AI 工具调用 - 截图（压缩为512x512以节省token）
+const onRequestScreenshot = async ({ callback }) => {
+  if (shaderRenderer.value) {
+    const result = await shaderRenderer.value.takeScreenshot(true)
+    if (result && result.dataUrl) {
+      // 压缩图片为512x512，保持纵横比
+      const compressedImage = await compressImage(result.dataUrl, 512)
+      callback(compressedImage)
+      shaderRenderer.value.closeScreenshot()
+    } else {
+      callback(null)
+    }
+  } else {
+    callback(null)
+  }
+}
+
+// 压缩图片，保持纵横比，限制最大尺寸
+async function compressImage(dataUrl, maxSize) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      // 计算缩放后的尺寸，保持纵横比
+      let width = img.width
+      let height = img.height
+      const maxDim = Math.max(width, height)
+      
+      if (maxDim > maxSize) {
+        const scale = maxSize / maxDim
+        width = Math.round(width * scale)
+        height = Math.round(height * scale)
+      }
+      
+      // 创建canvas进行压缩
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      
+      // 使用高质量缩放
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(img, 0, 0, width, height)
+      
+      // 转换为JPEG格式，质量0.9，平衡质量和大小
+      resolve(canvas.toDataURL('image/jpeg', 0.9))
+    }
+    img.onerror = () => resolve(dataUrl) // 失败时返回原图
+    img.src = dataUrl
+  })
+}
+
+// 处理 AI 工具调用 - 获取代码
+const onRequestCode = ({ callback }) => {
+  callback(currentShader.value)
+}
+
+// ========== 侧边栏宽度拖拽 ==========
+function startResizeSidebar(e) {
+  if (sidebarCollapsed.value) return
+  isResizingSidebar.value = true
+  const startX = e.clientX
+  const startWidth = sidebarEl.value.offsetWidth
+  const minWidth = 360
+  const maxWidth = 800
+  
+  function onMouseMove(e) {
+    const delta = e.clientX - startX
+    const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta))
+    sidebarEl.value.style.width = newWidth + 'px'
+  }
+  
+  function onMouseUp() {
+    isResizingSidebar.value = false
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+  
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
+// ========== 预览区高度拖拽 ==========
+function startResizePreview(e) {
+  isResizingPreview.value = true
+  const startY = e.clientY
+  const startHeight = previewSectionEl.value.offsetHeight
+  const containerHeight = sidebarEl.value.querySelector('.sidebar-content').offsetHeight
+  const minHeight = 150
+  const maxHeight = containerHeight - 200
+  
+  function onMouseMove(e) {
+    const delta = e.clientY - startY
+    const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + delta))
+    previewSectionEl.value.style.height = newHeight + 'px'
+    previewSectionEl.value.style.flex = 'none'
+  }
+  
+  function onMouseUp() {
+    isResizingPreview.value = false
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+  }
+  
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
 }
 </script>
 
@@ -122,19 +281,24 @@ html, body {
 .sidebar {
   width: 45%;
   min-width: 360px;
-  max-width: 560px;
+  max-width: 800px;
   background: #13131f;
   border-right: 1px solid #252538;
   display: flex;
   flex-direction: column;
   transition: width 0.3s ease, min-width 0.3s ease;
   overflow: auto;
+  position: relative;
+}
+
+.sidebar.resizing {
+  transition: none;
 }
 
 .sidebar.collapsed {
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
+  width: 44px !important;
+  min-width: 44px !important;
+  max-width: 44px !important;
 }
 
 .sidebar-header {
@@ -180,14 +344,16 @@ html, body {
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
+  height: calc(100% - 45px);
 }
 
 .preview-section {
   height: 45%;
-  min-height: 200px;
+  min-height: 150px;
   border-bottom: 1px solid #252538;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .section-title {
@@ -231,6 +397,35 @@ html, body {
   flex-direction: column;
   min-height: 200px;
   overflow: hidden;
+  position: relative;
+}
+
+/* 垂直拖拽条 */
+.resize-handle-vertical {
+  width: 6px;
+  background: transparent;
+  cursor: col-resize;
+  flex-shrink: 0;
+  z-index: 10;
+  transition: background 0.2s;
+}
+
+.resize-handle-vertical:hover {
+  background: #8b5cf6;
+}
+
+/* 水平拖拽条 */
+.resize-handle-horizontal {
+  height: 6px;
+  background: #252538;
+  cursor: row-resize;
+  flex-shrink: 0;
+  z-index: 10;
+  transition: background 0.2s;
+}
+
+.resize-handle-horizontal:hover {
+  background: #8b5cf6;
 }
 
 /* 主体区域 */
@@ -259,6 +454,11 @@ html, body {
     width: 100% !important;
     height: 44px;
     min-width: auto !important;
+  }
+  
+  .resize-handle-vertical,
+  .resize-handle-horizontal {
+    display: none;
   }
   
   .main {

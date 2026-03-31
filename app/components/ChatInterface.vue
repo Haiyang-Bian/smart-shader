@@ -4,47 +4,159 @@
     <header class="chat-header">
       <div class="header-left">
         <span class="logo">✨</span>
-        <h1>Smart Shader</h1>
+        <div class="title-group">
+          <h1>Smart Shader</h1>
+          <span v-if="currentModel" class="model-badge" :class="{ 'builtin': settings.provider === 'builtin' }">
+            {{ currentModel }}
+          </span>
+        </div>
       </div>
-      <button class="settings-btn" @click="showSettings = true">
-        <span>⚙️</span>
-        <span>设置</span>
-      </button>
+      <div class="header-actions">
+        <button v-if="messages.length > 1" class="action-btn" @click="clearChat" title="清空对话">
+          <span>🗑️</span>
+        </button>
+        <button class="settings-btn" @click="showSettings = true">
+          <span>⚙️</span>
+          <span>设置</span>
+        </button>
+      </div>
     </header>
 
     <!-- 消息列表 -->
     <div ref="messagesEl" class="messages custom-scrollbar">
-      <div 
-        v-for="(msg, i) in messages" 
-        :key="i"
-        class="message"
-        :class="msg.role"
+      <!-- 滚动到底部按钮 -->
+      <button 
+        v-if="!autoScroll && messages.length > 0" 
+        class="scroll-to-bottom-btn"
+        @click="autoScroll = true; scrollToBottom()"
       >
-        <div class="avatar">
-          {{ msg.role === 'user' ? '👤' : '✨' }}
-        </div>
-        <div class="bubble">
-          <p v-if="msg.content">{{ msg.content }}</p>
-          <div v-if="msg.shaderCode" class="shader-tag">🎨 已生成着色器</div>
-          <div v-if="msg.model" class="model-tag">{{ msg.model }}</div>
+        ↓ 滚动到底部
+      </button>
+      <!-- 欢迎消息 -->
+      <div v-if="messages.length === 0" class="welcome-area">
+        <div class="welcome-card">
+          <div class="welcome-icon">🎨</div>
+          <h2>你好！我是你的着色器助手</h2>
+          <p>我可以帮你创建各种炫酷的 GLSL 着色器效果</p>
+          <div v-if="settings.provider === 'builtin'" class="mode-notice">
+            <p>💡 当前使用<strong>内置模板模式</strong>，建议切换到 Kimi API 获得更好体验</p>
+            <button @click="showSettings = true">⚙️ 点此配置 API</button>
+          </div>
+          <div class="quick-actions">
+            <button v-for="action in quickActions" :key="action.text" @click="sendQuick(action.text)">
+              <span>{{ action.icon }}</span>
+              {{ action.text }}
+            </button>
+          </div>
         </div>
       </div>
       
-      <!-- 加载状态 -->
-      <div v-if="loading" class="message assistant">
-        <div class="avatar">✨</div>
-        <div class="bubble loading">
-          <span class="dot"></span>
-          <span class="dot"></span>
-          <span class="dot"></span>
+      <!-- 消息列表 -->
+      <template v-else>
+        <div 
+          v-for="(msg, i) in messages" 
+          :key="msg.id || i"
+          class="message-wrapper"
+          :class="msg.role"
+        >
+          <div class="message">
+            <div class="avatar" :class="msg.role">
+              {{ msg.role === 'user' ? '👤' : '✨' }}
+            </div>
+            <div class="message-content">
+              <!-- 思考过程（可折叠） -->
+              <div v-if="msg.reasoning" class="reasoning-block">
+                <button class="reasoning-toggle" @click="msg.showReasoning = !msg.showReasoning">
+                  <span>{{ msg.showReasoning ? '▼' : '▶' }}</span>
+                  <span>思考过程</span>
+                </button>
+                <div v-show="msg.showReasoning" class="reasoning-content">
+                  <pre>{{ msg.reasoning }}</pre>
+                </div>
+              </div>
+              
+              <!-- 消息内容 -->
+              <div class="bubble" :class="{ 'streaming': msg.isStreaming }">
+                <div v-if="msg.isStreaming && !msg.content" class="typing-indicator">
+                  <span></span><span></span><span></span>
+                </div>
+                <div v-else>
+                  <!-- 图片 -->
+                  <div v-if="msg.image" class="message-image">
+                    <img :src="msg.image" alt="渲染效果" />
+                  </div>
+                  <!-- 文本 -->
+                  <div v-if="msg.content" class="message-text" v-html="formatMessage(msg.content)"></div>
+                </div>
+                
+                <!-- 着色器标签 -->
+                <div v-if="msg.shaderCode" class="shader-preview-tag">
+                  <span>🎨</span>
+                  <span>已生成着色器</span>
+                </div>
+                
+                <!-- 应用代码按钮 -->
+                <div v-if="msg.shaderCode && !msg.isStreaming" class="apply-code-block">
+                  <button class="apply-code-btn" @click="applyShader(msg.shaderCode)">
+                    <span>▶️</span>
+                    <span>应用代码到编辑器</span>
+                  </button>
+                </div>
+              </div>
+              
+              <!-- 消息操作 -->
+              <div v-if="msg.role === 'assistant' && !msg.isStreaming" class="message-actions">
+                <button @click="regenerate(msg)">🔄 重新生成</button>
+                <button @click="copyMessage(msg)">📋 复制</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+      
+      <!-- 流式输出中的思考过程 -->
+      <div v-if="streamingReasoning" class="message-wrapper assistant streaming-reasoning">
+        <div class="message">
+          <div class="avatar assistant">✨</div>
+          <div class="message-content">
+            <div class="reasoning-block active">
+              <div class="reasoning-header">
+                <span>🔮</span>
+                <span>正在思考...</span>
+              </div>
+              <div class="reasoning-content">
+                <pre>{{ streamingReasoning }}</pre>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+      
+      <div ref="bottomEl"></div>
     </div>
 
     <!-- 输入区 -->
     <div class="input-area">
+      <!-- 待发送图片预览 -->
+      <div v-if="pendingImage" class="pending-image">
+        <div class="image-preview">
+          <img :src="pendingImage.dataUrl" alt="截图" />
+          <button class="remove-image" @click="removePendingImage" title="移除图片">✕</button>
+        </div>
+        <span class="image-hint">📷 截图将随消息一起发送给AI</span>
+      </div>
+      
+      <!-- 待发送代码预览 -->
+      <div v-if="pendingCode" class="pending-code">
+        <div class="code-preview-header">
+          <span>📝 代码已附加</span>
+          <button class="remove-code" @click="removePendingCode" title="移除代码">✕</button>
+        </div>
+        <pre class="code-preview">{{ pendingCode.slice(0, 200) }}{{ pendingCode.length > 200 ? '...' : '' }}</pre>
+      </div>
+      
       <!-- 快捷提示 -->
-      <div class="suggestions custom-scrollbar-x">
+      <div v-if="suggestions.length > 0 && !pendingImage && !pendingCode" class="suggestions custom-scrollbar-x">
         <button 
           v-for="s in suggestions" 
           :key="s"
@@ -58,24 +170,45 @@
       <div class="input-row">
         <textarea
           v-model="input"
-          placeholder="描述你想要的着色器效果，比如：彩虹波浪、星空、熔岩..."
-          @keydown.enter.prevent="send"
-          :disabled="loading"
-          rows="2"
+          :placeholder="pendingImage ? '描述你对这个效果的想法，比如【颜色太亮了，想要暗一点】...' : placeholderText"
+          @keydown.enter.prevent="handleEnter"
+          :disabled="isStreaming"
+          rows="1"
+          ref="inputEl"
           class="custom-scrollbar"
         />
         <button 
           class="send-btn"
           @click="send"
-          :disabled="!input.trim() || loading"
+          :disabled="(!input.trim() && !pendingImage) || isStreaming"
         >
-          {{ loading ? '⏳' : '➤' }}
+          <span v-if="isStreaming" class="stop-icon" @click.stop="stopStreaming">⏹</span>
+          <span v-else>➤</span>
         </button>
       </div>
       
-      <!-- 当前模型 -->
-      <div v-if="settings.provider !== 'builtin'" class="model-info">
-        使用: {{ providerName }} / {{ settings.model }}
+      <!-- 输入提示 -->
+      <div class="input-hint">
+        <span v-if="isStreaming">正在生成...</span>
+        <span v-else-if="pendingImage">图片已附加，描述你的反馈后发送</span>
+        <span v-else-if="pendingCode">代码已附加，描述你想要的修改后发送</span>
+        <span v-else-if="messages.length > 0">按 Enter 发送，Shift+Enter 换行 | 粘贴图片直接上传</span>
+        <span v-else>描述你想要的视觉效果 | 粘贴图片直接上传</span>
+      </div>
+      
+      <!-- 上传和快捷操作栏 -->
+      <div class="input-actions-bar">
+        <input
+          ref="fileInput"
+          type="file"
+          accept="image/*"
+          style="display: none"
+          @change="handleFileUpload"
+        />
+        <button class="upload-btn" @click="$refs.fileInput.click()" :disabled="isStreaming || !!pendingImage">
+          <span>📷</span>
+          <span>上传图片</span>
+        </button>
       </div>
     </div>
 
@@ -134,12 +267,7 @@
               {{ showToken ? '🙈' : '👁️' }}
             </button>
           </div>
-          <small>
-            Token 仅存储在本地浏览器中
-            <span v-if="settings.provider === 'moonshot'" class="hint">
-              <br>从 <a href="https://platform.moonshot.cn/console/api-keys" target="_blank">Moonshot 控制台</a> 获取
-            </span>
-          </small>
+          <small>Token 仅存储在本地浏览器中</small>
         </div>
 
         <details class="advanced">
@@ -155,9 +283,7 @@
               step="0.1"
               :disabled="isFixedTempModel"
             />
-            <small v-if="isFixedTempModel" class="hint">
-              当前模型只支持 temperature=1
-            </small>
+            <small>较低值更专注，较高值更有创意</small>
           </div>
 
           <div class="form-group">
@@ -177,9 +303,6 @@
               v-model="settings.customUrl"
               placeholder="https://api.example.com/v1"
             />
-            <small v-if="settings.provider === 'moonshot'">
-              默认: https://api.moonshot.cn/v1/chat/completions
-            </small>
           </div>
         </details>
 
@@ -204,19 +327,23 @@
 </template>
 
 <script setup>
-const emit = defineEmits(['shader-generated'])
+const emit = defineEmits(['shader-generated', 'request-screenshot', 'request-code'])
 
-// 消息
-const messages = ref([{
-  role: 'assistant',
-  content: '你好！我是 Smart Shader AI。描述你想要的视觉效果，我会为你生成 GLSL 着色器代码。试试：彩虹波浪、星空、熔岩灯...'
-}])
-
+// ============ 状态管理 ============
+const messages = ref([])
 const input = ref('')
-const loading = ref(false)
+const isStreaming = ref(false)
+const streamingReasoning = ref('')
+const abortController = ref(null)
 const messagesEl = ref(null)
+const bottomEl = ref(null)
+const inputEl = ref(null)
 
-// 设置
+// 待发送的图片和代码
+const pendingImage = ref(null)
+const pendingCode = ref('')
+
+// 设置相关
 const showSettings = ref(false)
 const showToken = ref(false)
 const testing = ref(false)
@@ -224,40 +351,61 @@ const testResult = ref(null)
 const fetchingModels = ref(false)
 const availableModels = ref([])
 
+// 快速操作
+const quickActions = [
+  { icon: '🌈', text: '彩虹波浪效果' },
+  { icon: '🔥', text: '火焰动画' },
+  { icon: '⭐', text: '星空夜景' },
+  { icon: '🌊', text: '水波纹' },
+  { icon: '💡', text: '熔岩灯' },
+  { icon: '🌃', text: '霓虹网格' }
+]
+
+// 动态建议
+const suggestions = computed(() => {
+  if (messages.value.length === 0) return []
+  const lastMsg = messages.value[messages.value.length - 1]
+  if (lastMsg.role !== 'assistant') return []
+  
+  return ['调整颜色', '变慢一点', '加些细节', '解释代码']
+})
+
+const placeholderText = computed(() => {
+  if (messages.value.length === 0) {
+    return '描述你想要的着色器效果，或直接问我问题...'
+  }
+  return '继续对话...'
+})
+
+const currentModel = computed(() => {
+  if (settings.provider === 'builtin') return '内置助手'
+  return settings.model
+})
+
+// ============ 提供商配置 ============
 const providers = [
-  { id: 'builtin', name: '内置模板 (无需API)', desc: '使用预设模板，无需配置', fetchModels: false },
+  { id: 'builtin', name: '内置助手 (无需API)', desc: '使用预设模板，无需配置', fetchModels: false },
   { id: 'openai', name: 'OpenAI', desc: 'GPT-4, GPT-3.5', fetchModels: true },
   { id: 'anthropic', name: 'Anthropic', desc: 'Claude 3 系列', fetchModels: false },
-  { id: 'google', name: 'Google Gemini', desc: 'Gemini Pro, Flash', fetchModels: false },
-  { id: 'moonshot', name: '月之暗面 (Moonshot)', desc: 'Kimi 大模型 (中国)', fetchModels: true },
+  { id: 'moonshot', name: '月之暗面 (Moonshot)', desc: 'Kimi 大模型', fetchModels: true },
   { id: 'openrouter', name: 'OpenRouter', desc: '多模型聚合平台', fetchModels: true },
   { id: 'local', name: '本地/Ollama', desc: '自建模型服务', fetchModels: true }
 ]
 
-// 默认模型列表（作为后备）
 const defaultModels = {
   builtin: [{ id: 'template', name: '模板匹配', description: '' }],
   anthropic: [
-    { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: '' },
-    { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: '' },
-    { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: '' }
-  ],
-  google: [
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: '' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: '' }
+    { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: '最强大的模型' },
+    { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: '均衡性能' },
+    { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: '快速响应' }
   ],
   moonshot: [
     { id: 'kimi-k2.5', name: 'Kimi K2.5', description: '最新模型' },
     { id: 'kimi-k2', name: 'Kimi K2', description: '' },
-    { id: 'moonshot-v1-8k', name: 'Moonshot v1 (8K)', description: '只支持 temperature=1' },
-    { id: 'moonshot-v1-32k', name: 'Moonshot v1 (32K)', description: '只支持 temperature=1' },
-    { id: 'moonshot-v1-128k', name: 'Moonshot v1 (128K)', description: '只支持 temperature=1' }
+    { id: 'moonshot-v1-8k', name: 'Moonshot v1 (8K)', description: '只支持 temperature=1' }
   ]
 }
 
-const suggestions = ['彩虹波浪', '熔岩灯', '星空', '火焰', '水波纹', '霓虹网格']
-
-// 默认设置
 const defaultSettings = {
   provider: 'builtin',
   model: 'template',
@@ -267,63 +415,733 @@ const defaultSettings = {
   customUrl: ''
 }
 
-// 加载保存的设置 - 持久化
 const settings = reactive({ ...defaultSettings })
 
-// 计算属性
+// ============ 计算属性 ============
 const currentProvider = computed(() => providers.find(p => p.id === settings.provider))
-const providerName = computed(() => currentProvider.value?.name || settings.provider)
 const tokenPlaceholder = computed(() => {
   if (settings.provider === 'moonshot') return 'sk-xxxxxxxxxxxxxxxxxxxxxxxx'
   return '输入你的 API Key'
 })
-
-// 检查是否为固定 temperature 的模型
 const isFixedTempModel = computed(() => {
   const fixedTempModels = ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k']
   return fixedTempModels.some(m => settings.model.includes(m))
 })
 
-// 加载保存的设置
+// 自动滚动状态
+const autoScroll = ref(true)
+let userScrollTimeout = null
+
+// 监听用户滚动
+function onMessagesScroll(e) {
+  const el = e.target
+  const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
+  
+  // 清除之前的定时器
+  if (userScrollTimeout) clearTimeout(userScrollTimeout)
+  
+  if (!isAtBottom) {
+    // 用户向上滚动，停止自动滚动
+    autoScroll.value = false
+    
+    // 3秒后恢复自动滚动
+    userScrollTimeout = setTimeout(() => {
+      autoScroll.value = true
+    }, 3000)
+  } else {
+    // 用户滚动到底部，恢复自动滚动
+    autoScroll.value = true
+  }
+}
+
+// ============ 生命周期 ============
 onMounted(() => {
+  loadSettings()
+  loadMessages()
+  adjustTextareaHeight()
+  
+  // 添加滚动监听
+  if (messagesEl.value) {
+    messagesEl.value.addEventListener('scroll', onMessagesScroll)
+  }
+  
+  // 添加粘贴事件监听
+  document.addEventListener('paste', handlePaste)
+})
+
+onUnmounted(() => {
+  if (messagesEl.value) {
+    messagesEl.value.removeEventListener('scroll', onMessagesScroll)
+  }
+  if (userScrollTimeout) clearTimeout(userScrollTimeout)
+  
+  // 移除粘贴事件监听
+  document.removeEventListener('paste', handlePaste)
+})
+
+// ============ 设置管理 ============
+function loadSettings() {
   const saved = localStorage.getItem('shader-settings')
   if (saved) {
     try {
       const parsed = JSON.parse(saved)
       Object.assign(settings, parsed)
-      // 加载后获取模型列表
       if (settings.provider !== 'builtin' && settings.token) {
         fetchModels()
       } else {
         availableModels.value = defaultModels[settings.provider] || defaultModels.builtin
       }
     } catch (e) {
-      console.error('Failed to load settings:', e)
       availableModels.value = defaultModels.builtin
     }
   } else {
     availableModels.value = defaultModels.builtin
   }
-})
+}
 
-// 监听 provider 变化
-watch(() => settings.provider, (newProvider) => {
-  if (newProvider === 'builtin') {
-    availableModels.value = defaultModels.builtin
-    settings.model = 'template'
-  } else {
-    availableModels.value = defaultModels[newProvider] || []
-    if (availableModels.value.length > 0) {
-      settings.model = availableModels.value[0].id
+function saveSettings() {
+  localStorage.setItem('shader-settings', JSON.stringify(settings))
+  showSettings.value = false
+  testResult.value = null
+  
+  addMessage('assistant', `✅ 设置已保存！当前使用: ${currentProvider.value?.name} (${settings.model})`)
+}
+
+function resetSettings() {
+  Object.assign(settings, defaultSettings)
+  localStorage.removeItem('shader-settings')
+  availableModels.value = defaultModels.builtin
+  testResult.value = null
+}
+
+// ============ 对话持久化 ============
+function loadMessages() {
+  const saved = localStorage.getItem('shader-chat-history')
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved)
+      if (Array.isArray(parsed)) {
+        messages.value = parsed.map(m => ({ ...m, isStreaming: false }))
+        scrollToBottom()
+      }
+    } catch (e) {}
+  }
+}
+
+function saveMessages() {
+  const toSave = messages.value.map(m => ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    image: m.image,
+    code: m.code,
+    reasoning: m.reasoning,
+    shaderCode: m.shaderCode,
+    timestamp: m.timestamp
+  }))
+  localStorage.setItem('shader-chat-history', JSON.stringify(toSave))
+}
+
+function clearChat() {
+  if (confirm('确定要清空所有对话记录吗？')) {
+    messages.value = []
+    pendingImage.value = null
+    pendingCode.value = ''
+    localStorage.removeItem('shader-chat-history')
+  }
+}
+
+// ============ 图片相关 ============
+function addScreenshot(imageData) {
+  pendingImage.value = imageData
+  // 聚焦输入框
+  nextTick(() => {
+    inputEl.value?.focus()
+  })
+}
+
+function removePendingImage() {
+  pendingImage.value = null
+}
+
+// 处理文件上传
+function handleFileUpload(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  
+  if (!file.type.startsWith('image/')) {
+    alert('请上传图片文件')
+    return
+  }
+  
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    pendingImage.value = {
+      dataUrl: e.target.result,
+      timestamp: Date.now()
     }
-    // 如果有 token，尝试获取远程模型列表
-    if (settings.token) {
-      fetchModels()
+    nextTick(() => {
+      inputEl.value?.focus()
+    })
+  }
+  reader.readAsDataURL(file)
+  
+  // 清空input，允许重复上传同一文件
+  event.target.value = ''
+}
+
+// 处理粘贴事件
+function handlePaste(event) {
+  const items = event.clipboardData?.items
+  if (!items) return
+  
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      event.preventDefault()
+      const blob = item.getAsFile()
+      if (!blob) continue
+      
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        pendingImage.value = {
+          dataUrl: e.target.result,
+          timestamp: Date.now()
+        }
+        nextTick(() => {
+          inputEl.value?.focus()
+        })
+      }
+      reader.readAsDataURL(blob)
+      break
     }
   }
+}
+
+function removePendingCode() {
+  pendingCode.value = ''
+}
+
+// 添加代码到待发送
+function addCodeBlock(code) {
+  // 在输入框中插入代码块标记
+  const codePreview = code.length > 100 ? code.slice(0, 100) + '...' : code
+  const codeBlock = `[code]\n${codePreview}\n[/code]`
+  
+  if (input.value) {
+    input.value += '\n\n' + codeBlock
+  } else {
+    input.value = '这是当前的代码，请帮我优化：\n\n' + codeBlock
+  }
+  
+  // 保存完整代码到 pendingCode 供发送时使用
+  pendingCode.value = code
+  
+  nextTick(() => {
+    inputEl.value?.focus()
+    adjustTextareaHeight()
+  })
+}
+
+// 暴露方法给父组件
+defineExpose({
+  addScreenshot,
+  addCodeBlock
 })
 
-// 获取模型列表
+// ============ 消息管理 ============
+function addMessage(role, content, extra = {}) {
+  const msg = {
+    id: Date.now() + Math.random(),
+    role,
+    content,
+    timestamp: Date.now(),
+    showReasoning: false,
+    isStreaming: false,
+    ...extra
+  }
+  messages.value.push(msg)
+  return msg
+}
+
+function updateLastMessage(updater) {
+  const last = messages.value[messages.value.length - 1]
+  if (last) {
+    Object.assign(last, typeof updater === 'function' ? updater(last) : updater)
+  }
+  return last
+}
+
+// ============ 发送消息 ============
+function handleEnter(e) {
+  if (e.shiftKey) return
+  send()
+}
+
+function sendQuick(text) {
+  input.value = text
+  send()
+}
+
+async function send() {
+  const text = input.value.trim()
+  if ((!text && !pendingImage.value && !pendingCode.value) || isStreaming.value) return
+  
+  if (settings.provider !== 'builtin' && !settings.token.trim()) {
+    addMessage('assistant', '⚠️ 请先点击右上角 ⚙️ 设置，配置你的 API Token')
+    showSettings.value = true
+    return
+  }
+  
+  // 构建消息内容
+  let messageContent = text
+  
+  // 如果有待发送的代码，添加到消息中
+  if (pendingCode.value) {
+    if (messageContent) {
+      messageContent += '\n\n```glsl\n' + pendingCode.value + '\n```'
+    } else {
+      messageContent = '请帮我优化以下代码：\n\n```glsl\n' + pendingCode.value + '\n```'
+    }
+  }
+  
+  // 添加用户消息（包含图片和代码）
+  addMessage('user', messageContent, {
+    image: pendingImage.value?.dataUrl,
+    code: pendingCode.value || undefined
+  })
+  
+  // 清空输入
+  input.value = ''
+  pendingImage.value = null
+  pendingCode.value = ''
+  adjustTextareaHeight()
+  saveMessages()
+  
+  // 开始流式输出
+  await startStreaming()
+}
+
+// 解析工具调用（支持 Kimi/OpenAI 标准格式）
+function parseToolCalls(message) {
+  // 如果是标准格式的 tool_calls
+  if (message.toolCalls && Array.isArray(message.toolCalls)) {
+    return message.toolCalls.map(tc => ({
+      id: tc.id,
+      name: tc.name || tc.function?.name,
+      arguments: typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : tc.function?.arguments
+    }))
+  }
+  return []
+}
+
+// 从消息中提取工具调用
+function extractToolCallsFromStream(data) {
+  if (data.tool_calls) {
+    return data.tool_calls.map(tc => ({
+      id: tc.id,
+      name: tc.name || tc.function?.name,
+      arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.function?.arguments)
+    }))
+  }
+  return null
+}
+
+// 执行工具调用
+async function executeToolCalls(toolCalls) {
+  const results = []
+  
+  for (const toolCall of toolCalls) {
+    const result = { name: toolCall.name, arguments: toolCall.arguments }
+    
+    try {
+      switch (toolCall.name) {
+        case 'capture_screenshot': {
+          // 触发截图
+          const screenshotResult = await requestScreenshot()
+          result.result = screenshotResult.text
+          result.image = screenshotResult.image
+          break
+        }
+        case 'get_current_code':
+          // 获取代码
+          result.result = await requestCode()
+          break
+        default:
+          result.error = `未知工具: ${toolCall.name}`
+      }
+    } catch (error) {
+      result.error = error.message
+    }
+    
+    results.push(result)
+  }
+  
+  return results
+}
+
+// 请求截图（通过父组件）
+async function requestScreenshot() {
+  return new Promise((resolve) => {
+    emit('request-screenshot', {
+      callback: (imageData) => {
+        resolve(imageData ? { text: '[截图已捕获]', image: imageData } : { text: '[截图失败]' })
+      }
+    })
+  })
+}
+
+// 请求代码（通过父组件）
+async function requestCode() {
+  return new Promise((resolve) => {
+    emit('request-code', {
+      callback: (code) => {
+        resolve(code || '[未能获取代码]')
+      }
+    })
+  })
+}
+
+// 格式化工具执行结果
+function formatToolResults(results) {
+  if (results.length === 0) return ''
+  
+  let formatted = '\n\n[工具执行结果]\n'
+  
+  for (const result of results) {
+    formatted += `\n工具: ${result.name}\n`
+    if (result.error) {
+      formatted += `错误: ${result.error}\n`
+    } else if (result.result) {
+      const resultText = typeof result.result === 'string' ? result.result : (result.result.text || JSON.stringify(result.result))
+      formatted += `结果: ${resultText}\n`
+    }
+  }
+  
+  return formatted
+}
+
+async function startStreaming() {
+  isStreaming.value = true
+  streamingReasoning.value = ''
+  abortController.value = new AbortController()
+  
+  const assistantMsg = addMessage('assistant', '', { isStreaming: true })
+  scrollToBottom()
+  
+  try {
+    // 准备消息历史
+    const history = messages.value
+      .filter(m => !m.isStreaming)
+      .map(m => {
+        const msg = { role: m.role, content: m.content || '' }
+        if (m.image) msg.image = m.image
+        return msg
+      })
+    
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: history,
+        settings: settings.provider === 'builtin' ? null : { ...settings },
+        stream: true
+      }),
+      signal: abortController.value.signal
+    })
+    
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let fullContent = ''
+    let fullReasoning = ''
+    let shaderCode = null
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        
+        const data = line.slice(6)
+        if (data === '[DONE]') continue
+        
+        try {
+          const parsed = JSON.parse(data)
+          
+          if (parsed.type === 'reasoning') {
+            fullReasoning += parsed.content
+            streamingReasoning.value = fullReasoning
+            scrollToBottom()
+          } else if (parsed.type === 'reasoning_end') {
+            streamingReasoning.value = ''
+            updateLastMessage({ reasoning: fullReasoning })
+          } else if (parsed.type === 'content') {
+            fullContent += parsed.content
+            updateLastMessage({ content: fullContent })
+            scrollToBottom()
+          } else if (parsed.type === 'shader') {
+            shaderCode = parsed.code
+            updateLastMessage({ shaderCode })
+          } else if (parsed.type === 'tool_calls') {
+            // 收到工具调用信息
+            updateLastMessage({ 
+              content: fullContent + '\n\n[正在执行工具...]',
+              isStreaming: false,
+              toolCalls: parsed.calls
+            })
+            
+            // 执行工具调用
+            const toolResults = await executeToolCalls(parsed.calls)
+            const screenshotResult = toolResults.find(r => r.name === 'capture_screenshot' && r.image)
+            
+            updateLastMessage({ 
+              content: fullContent + '\n\n[工具已执行]',
+              reasoning: fullReasoning,
+              shaderCode,
+              toolResults: toolResults,
+              image: screenshotResult?.image || undefined
+            })
+            
+            // 添加系统消息将工具结果发送给AI
+            addMessage('system', formatToolResults(toolResults))
+            
+            // 继续流式输出获取AI对工具结果的回复
+            await continueStreamingWithToolResults()
+            return
+          }
+        } catch (e) {}
+      }
+    }
+    
+    // 检查是否有工具调用（备选方式）
+    const lastMsg = messages.value[messages.value.length - 1]
+    const toolCalls = parseToolCalls(lastMsg)
+    
+    if (toolCalls.length > 0 && !lastMsg.toolResultsProcessed) {
+      lastMsg.toolResultsProcessed = true
+      
+      updateLastMessage({ 
+        content: fullContent + '\n\n[正在执行工具...]',
+        isStreaming: false
+      })
+      
+      const toolResults = await executeToolCalls(toolCalls)
+      const screenshotResult = toolResults.find(r => r.name === 'capture_screenshot' && r.image)
+      
+      updateLastMessage({ 
+        content: fullContent + '\n\n[工具已执行]',
+        reasoning: fullReasoning,
+        shaderCode,
+        image: screenshotResult?.image || undefined
+      })
+      
+      addMessage('system', formatToolResults(toolResults))
+      await continueStreamingWithToolResults()
+      return
+    }
+    
+    // 正常完成（没有工具调用）
+    updateLastMessage({ 
+      isStreaming: false,
+      content: fullContent,
+      reasoning: fullReasoning || undefined,
+      shaderCode
+    })
+    
+    // 自动应用代码到编辑器
+    if (shaderCode) {
+      emit('shader-generated', shaderCode)
+    }
+    
+    saveMessages()
+    
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      updateLastMessage({ content: '(已停止生成)', isStreaming: false })
+    } else {
+      updateLastMessage({ 
+        content: `❌ 出错了: ${error.message || '请检查网络连接和API设置'}`,
+        isStreaming: false 
+      })
+    }
+    saveMessages()
+  } finally {
+    isStreaming.value = false
+    streamingReasoning.value = ''
+    abortController.value = null
+  }
+}
+
+// 在工具执行完成后继续流式输出
+async function continueStreamingWithToolResults() {
+  isStreaming.value = true
+  streamingReasoning.value = ''
+  
+  try {
+    // 准备消息历史（包含工具结果）
+    const history = messages.value
+      .filter(m => !m.isStreaming)
+      .map(m => {
+        const msg = { role: m.role, content: m.content || '' }
+        if (m.image) msg.image = m.image
+        return msg
+      })
+    
+    // 添加助手占位消息
+    const assistantMsg = addMessage('assistant', '', { isStreaming: true })
+    scrollToBottom()
+    
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: history,
+        settings: settings.provider === 'builtin' ? null : { ...settings },
+        stream: true
+      })
+    })
+    
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let fullContent = ''
+    let fullReasoning = ''
+    let shaderCode = null
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        
+        const data = line.slice(6)
+        if (data === '[DONE]') continue
+        
+        try {
+          const parsed = JSON.parse(data)
+          
+          if (parsed.type === 'reasoning') {
+            fullReasoning += parsed.content
+            streamingReasoning.value = fullReasoning
+            scrollToBottom()
+          } else if (parsed.type === 'reasoning_end') {
+            streamingReasoning.value = ''
+            updateLastMessage({ reasoning: fullReasoning })
+          } else if (parsed.type === 'content') {
+            fullContent += parsed.content
+            updateLastMessage({ content: fullContent })
+            scrollToBottom()
+          } else if (parsed.type === 'shader') {
+            shaderCode = parsed.code
+            updateLastMessage({ shaderCode })
+          }
+        } catch (e) {}
+      }
+    }
+    
+    updateLastMessage({ 
+      isStreaming: false,
+      content: fullContent,
+      reasoning: fullReasoning || undefined,
+      shaderCode
+    })
+    
+    // 自动应用代码到编辑器
+    if (shaderCode) {
+      emit('shader-generated', shaderCode)
+    }
+    
+    saveMessages()
+    
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      updateLastMessage({ 
+        content: `[工具执行后续讨失败: ${error.message}]`,
+        isStreaming: false 
+      })
+      saveMessages()
+    }
+  } finally {
+    isStreaming.value = false
+    streamingReasoning.value = ''
+  }
+}
+
+function stopStreaming() {
+  if (abortController.value) {
+    abortController.value.abort()
+  }
+}
+
+// ============ 消息操作 ============
+async function regenerate(msg) {
+  const msgIndex = messages.value.findIndex(m => m.id === msg.id)
+  if (msgIndex <= 0) return
+  
+  messages.value = messages.value.slice(0, msgIndex)
+  saveMessages()
+  
+  await startStreaming()
+}
+
+async function copyMessage(msg) {
+  try {
+    await navigator.clipboard.writeText(msg.content)
+  } catch (e) {}
+}
+
+function applyShader(code) {
+  emit('shader-generated', code)
+}
+
+// ============ 工具函数 ============
+function formatMessage(text) {
+  if (!text) return ''
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>')
+}
+
+function scrollToBottom() {
+  nextTick(() => {
+    if (autoScroll.value && bottomEl.value) {
+      bottomEl.value.scrollIntoView({ behavior: 'smooth' })
+    }
+  })
+}
+
+function adjustTextareaHeight() {
+  nextTick(() => {
+    const el = inputEl.value
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 150) + 'px'
+  })
+}
+
+watch(input, adjustTextareaHeight)
+
+// ============ 设置相关方法 ============
 async function fetchModels() {
   if (settings.provider === 'builtin') return
   if (!settings.token) {
@@ -332,7 +1150,6 @@ async function fetchModels() {
   }
   
   fetchingModels.value = true
-  
   try {
     const res = await $fetch('/api/models', {
       query: {
@@ -343,12 +1160,9 @@ async function fetchModels() {
     })
     
     if (res.error) {
-      console.error('Failed to fetch models:', res.error)
-      // 使用默认列表
       availableModels.value = defaultModels[settings.provider] || []
-    } else if (res.models && res.models.length > 0) {
+    } else if (res.models?.length > 0) {
       availableModels.value = res.models
-      // 如果当前选择的模型不在列表中，选择第一个
       if (!availableModels.value.find(m => m.id === settings.model)) {
         settings.model = availableModels.value[0].id
       }
@@ -356,144 +1170,37 @@ async function fetchModels() {
       availableModels.value = defaultModels[settings.provider] || []
     }
   } catch (err) {
-    console.error('Failed to fetch models:', err)
     availableModels.value = defaultModels[settings.provider] || []
   } finally {
     fetchingModels.value = false
   }
 }
 
-const onProviderChange = () => {
-  // provider 变化时由 watch 处理
+function onProviderChange() {
+  if (settings.provider === 'builtin') {
+    availableModels.value = defaultModels.builtin
+    settings.model = 'template'
+  } else {
+    availableModels.value = defaultModels[settings.provider] || []
+    if (availableModels.value.length > 0) {
+      settings.model = availableModels.value[0].id
+    }
+    if (settings.token) fetchModels()
+  }
 }
 
-// Token 输入框失去焦点时获取模型列表
-const onTokenBlur = () => {
+function onTokenBlur() {
   if (settings.token && settings.provider !== 'builtin') {
     fetchModels()
   }
 }
 
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (messagesEl.value) {
-      messagesEl.value.scrollTop = messagesEl.value.scrollHeight
-    }
-  })
-}
-
-const send = async () => {
-  const text = input.value.trim()
-  if (!text || loading.value) return
-  
-  // 检查 API Token
-  if (settings.provider !== 'builtin') {
-    const token = settings.token?.trim()
-    if (!token) {
-      messages.value.push({
-        role: 'assistant',
-        content: '⚠️ 请先点击右上角 ⚙️ 设置，配置你的 API Token'
-      })
-      showSettings.value = true
-      scrollToBottom()
-      return
-    }
-    
-    // Moonshot Token 格式检查
-    if (settings.provider === 'moonshot' && !token.startsWith('sk-')) {
-      messages.value.push({
-        role: 'assistant',
-        content: '⚠️ Moonshot API Token 格式错误，应以 sk- 开头。请从 https://platform.moonshot.cn/console/api-keys 获取正确的 API Key。'
-      })
-      showSettings.value = true
-      scrollToBottom()
-      return
-    }
-  }
-  
-  messages.value.push({ role: 'user', content: text })
-  input.value = ''
-  loading.value = true
-  scrollToBottom()
-  
-  try {
-    const res = await $fetch('/api/generate-shader', {
-      method: 'POST',
-      body: {
-        prompt: text,
-        settings: settings.provider === 'builtin' ? null : { ...settings }
-      }
-    })
-    
-    messages.value.push({
-      role: 'assistant',
-      content: res.description || '已生成着色器！',
-      shaderCode: true,
-      model: res.model
-    })
-    
-    if (res.shaderCode) {
-      emit('shader-generated', res.shaderCode)
-    }
-  } catch (err) {
-    const errorMsg = err.data?.message || err.message
-    
-    // 提供更友好的错误提示
-    let friendlyMsg = errorMsg
-    if (settings.provider === 'moonshot') {
-      if (errorMsg.includes('Invalid Authentication') || errorMsg.includes('401')) {
-        friendlyMsg = 'Moonshot API Token 无效。请检查：\n1. Token 是否以 sk- 开头\n2. Token 是否已过期\n3. 从 https://platform.moonshot.cn/console/api-keys 重新获取'
-      }
-    }
-    
-    messages.value.push({
-      role: 'assistant',
-      content: '出错了: ' + friendlyMsg
-    })
-  } finally {
-    loading.value = false
-    scrollToBottom()
-  }
-}
-
-// 保存设置到 localStorage - 持久化
-const saveSettings = () => {
-  // 保存前清理 token
-  const settingsToSave = {
-    ...settings,
-    token: settings.token?.trim() || ''
-  }
-  localStorage.setItem('shader-settings', JSON.stringify(settingsToSave))
-  showSettings.value = false
-  testResult.value = null
-  
-  // 显示保存成功提示
-  messages.value.push({
-    role: 'assistant',
-    content: `✅ 设置已保存！当前使用: ${providerName.value} (${settings.model})`
-  })
-  scrollToBottom()
-}
-
-const resetSettings = () => {
-  Object.assign(settings, defaultSettings)
-  localStorage.removeItem('shader-settings')
-  availableModels.value = defaultModels.builtin
-  testResult.value = null
-}
-
-const testConnection = async () => {
+async function testConnection() {
   if (settings.provider === 'builtin') return
   
   const token = settings.token?.trim()
   if (!token) {
     testResult.value = { success: false, message: '请先输入 API Token' }
-    return
-  }
-  
-  // Moonshot Token 格式检查
-  if (settings.provider === 'moonshot' && !token.startsWith('sk-')) {
-    testResult.value = { success: false, message: 'Moonshot API Token 应以 sk- 开头' }
     return
   }
   
@@ -510,11 +1217,7 @@ const testConnection = async () => {
       }
     })
     testResult.value = res
-    
-    // 测试成功后刷新模型列表
-    if (res.success) {
-      await fetchModels()
-    }
+    if (res.success) await fetchModels()
   } catch (err) {
     testResult.value = { success: false, message: err.message }
   } finally {
@@ -536,7 +1239,7 @@ const testConnection = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 12px 16px;
   background: #13131f;
   border-bottom: 1px solid #252538;
   flex-shrink: 0;
@@ -545,22 +1248,49 @@ const testConnection = async () => {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .logo {
   font-size: 24px;
 }
 
+.title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 h1 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   background: linear-gradient(90deg, #8b5cf6, #ec4899);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  margin: 0;
 }
 
-.settings-btn {
+.model-badge {
+  font-size: 11px;
+  color: #606070;
+}
+
+.model-badge.builtin {
+  color: #f59e0b;
+  cursor: pointer;
+}
+
+.model-badge.builtin::after {
+  content: ' (点击切换API)';
+  opacity: 0.7;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn, .settings-btn {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -571,109 +1301,341 @@ h1 {
   color: #a0a0b0;
   cursor: pointer;
   font-size: 14px;
+  transition: all 0.2s;
 }
 
-.settings-btn:hover {
+.action-btn:hover, .settings-btn:hover {
   background: #353550;
   color: #fff;
 }
 
-/* 消息列表 */
+/* 消息区域 */
 .messages {
   flex: 1;
   overflow-y: auto;
   padding: 20px;
+  position: relative;
+}
+
+/* 滚动到底部按钮 */
+.scroll-to-bottom-btn {
+  position: fixed;
+  bottom: 100px;
+  right: 30px;
+  padding: 10px 16px;
+  background: #8b5cf6;
+  border: none;
+  border-radius: 20px;
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  transition: all 0.2s;
+}
+
+.scroll-to-bottom-btn:hover {
+  background: #7c3aed;
+  transform: translateY(-2px);
+}
+
+/* 欢迎区域 */
+.welcome-area {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+}
+
+.welcome-card {
+  text-align: center;
+  max-width: 400px;
+  padding: 40px 30px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(236, 72, 153, 0.1));
+  border-radius: 20px;
+  border: 1px solid #252538;
+}
+
+.welcome-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.welcome-card h2 {
+  font-size: 22px;
+  margin: 0 0 12px;
+  color: #fff;
+}
+
+.welcome-card p {
+  color: #808090;
+  margin: 0 0 24px;
+  font-size: 14px;
+}
+
+.mode-notice {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.mode-notice p {
+  margin: 0 0 12px;
+  color: #fbbf24;
+  font-size: 13px;
+}
+
+.mode-notice button {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.mode-notice button:hover {
+  opacity: 0.9;
+}
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.quick-actions button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #1a1a2a;
+  border: 1px solid #353550;
+  border-radius: 20px;
+  color: #e0e0f0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-actions button:hover {
+  background: #252538;
+  border-color: #8b5cf6;
+  transform: translateY(-1px);
+}
+
+/* 消息 */
+.message-wrapper {
+  margin-bottom: 20px;
 }
 
 .message {
   display: flex;
   gap: 12px;
-  max-width: 85%;
-  animation: fadeIn 0.3s ease;
+  max-width: 90%;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+.message-wrapper.user {
+  display: flex;
+  justify-content: flex-end;
 }
 
-.message.user {
-  align-self: flex-end;
+.message-wrapper.user .message {
   flex-direction: row-reverse;
 }
 
 .avatar {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: #252538;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 14px;
   flex-shrink: 0;
 }
 
-.message.assistant .avatar {
+.avatar.assistant {
   background: linear-gradient(135deg, #8b5cf6, #ec4899);
+}
+
+.message-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: calc(100% - 44px);
 }
 
 .bubble {
   background: #1a1a2a;
-  padding: 12px 16px;
-  border-radius: 12px;
+  padding: 14px 18px;
+  border-radius: 16px;
   border-bottom-left-radius: 4px;
-  line-height: 1.6;
+  line-height: 1.7;
   font-size: 14px;
+  color: #e0e0f0;
   word-break: break-word;
 }
 
-.message.user .bubble {
-  background: #8b5cf6;
-  border-bottom-left-radius: 12px;
+.message-wrapper.user .bubble {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  border-bottom-left-radius: 16px;
   border-bottom-right-radius: 4px;
+  color: #fff;
 }
 
-.bubble.loading {
-  display: flex;
-  gap: 4px;
-  padding: 16px 20px;
+.bubble.streaming {
+  opacity: 0.9;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  background: #808090;
-  border-radius: 50%;
-  animation: bounce 1.4s ease-in-out infinite;
+/* 消息中的图片 */
+.message-image {
+  margin-bottom: 12px;
 }
 
-.dot:nth-child(1) { animation-delay: -0.32s; }
-.dot:nth-child(2) { animation-delay: -0.16s; }
-
-@keyframes bounce {
-  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
-  40% { transform: scale(1); opacity: 1; }
+.message-image img {
+  max-width: 280px;
+  max-height: 200px;
+  border-radius: 8px;
+  border: 1px solid #353550;
 }
 
-.shader-tag {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #353550;
+.message-text :deep(pre) {
+  background: #0a0a0f;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+
+.message-text :deep(code) {
+  font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
+}
+
+.message-text :deep(pre code) {
+  color: #a5b3ce;
+}
+
+.message-text :deep(p) {
+  margin: 0 0 10px;
+}
+
+.message-text :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* 思考过程 */
+.reasoning-block {
+  background: #0f0f17;
+  border: 1px solid #252538;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.reasoning-block.active {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.05);
+}
+
+.reasoning-toggle, .reasoning-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #808090;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+}
+
+.reasoning-content {
+  padding: 0 14px 12px;
+}
+
+.reasoning-content pre {
+  margin: 0;
+  font-size: 12px;
+  color: #606070;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.streaming-reasoning {
+  opacity: 0.8;
+}
+
+/* 着色器标签 */
+.shader-preview-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: rgba(34, 211, 238, 0.1);
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  border-radius: 10px;
+  font-size: 13px;
   color: #22d3ee;
 }
 
-.model-tag {
-  margin-top: 6px;
-  font-size: 11px;
-  color: #808090;
+/* 应用代码按钮 */
+.apply-code-block {
+  margin-top: 12px;
 }
 
-/* 输入区 */
+.apply-code-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+  justify-content: center;
+}
+
+.apply-code-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+/* 消息操作 */
+.message-actions {
+  display: flex;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.message-actions button {
+  font-size: 12px;
+  color: #606070;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.message-actions button:hover {
+  color: #a0a0b0;
+}
+
+/* 输入区域 */
 .input-area {
   padding: 16px 20px;
   background: #13131f;
@@ -681,6 +1643,101 @@ h1 {
   flex-shrink: 0;
 }
 
+/* 待发送图片 */
+.pending-image {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px dashed #8b5cf6;
+  border-radius: 12px;
+}
+
+.image-preview {
+  position: relative;
+  display: inline-block;
+}
+
+.image-preview img {
+  max-height: 100px;
+  max-width: 200px;
+  border-radius: 8px;
+  border: 1px solid #353550;
+}
+
+.remove-image {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  background: #ef4444;
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-hint {
+  font-size: 12px;
+  color: #8b5cf6;
+}
+
+/* 待发送代码 */
+.pending-code {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: rgba(78, 201, 176, 0.1);
+  border: 1px dashed #4EC9B0;
+  border-radius: 12px;
+}
+
+.code-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #4EC9B0;
+}
+
+.remove-code {
+  width: 20px;
+  height: 20px;
+  background: #ef4444;
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.code-preview {
+  margin: 0;
+  padding: 10px;
+  background: #0a0a0f;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #a0a0b0;
+  max-height: 100px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 快捷提示 */
 .suggestions {
   display: flex;
   gap: 8px;
@@ -710,6 +1767,7 @@ h1 {
 .input-row {
   display: flex;
   gap: 10px;
+  align-items: flex-end;
 }
 
 .input-row textarea {
@@ -723,6 +1781,9 @@ h1 {
   resize: none;
   outline: none;
   font-family: inherit;
+  min-height: 44px;
+  max-height: 150px;
+  line-height: 1.5;
 }
 
 .input-row textarea:focus {
@@ -730,7 +1791,7 @@ h1 {
 }
 
 .input-row textarea::placeholder {
-  color: #606070;
+  color: #505060;
 }
 
 .send-btn {
@@ -745,7 +1806,8 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s;
+  transition: all 0.2s;
+  flex-shrink: 0;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -757,10 +1819,72 @@ h1 {
   cursor: not-allowed;
 }
 
-.model-info {
+.stop-icon {
+  font-size: 14px;
+}
+
+.input-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #505060;
+  text-align: center;
+}
+
+/* 输入操作栏 */
+.input-actions-bar {
+  display: flex;
+  gap: 8px;
   margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #252538;
+}
+
+.upload-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #1a1a2a;
+  border: 1px solid #353550;
+  border-radius: 8px;
+  color: #a0a0b0;
   font-size: 12px;
-  color: #606070;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-btn:hover:not(:disabled) {
+  background: #252538;
+  border-color: #8b5cf6;
+  color: #fff;
+}
+
+.upload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 打字动画 */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: #808090;
+  border-radius: 50%;
+  animation: typing 1.4s ease-in-out infinite;
+}
+
+.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes typing {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
 }
 
 /* 弹窗 */
@@ -808,20 +1932,11 @@ h1 {
   color: #808090;
   font-size: 20px;
   cursor: pointer;
-  padding: 4px;
-}
-
-.modal-header button:hover {
-  color: #fff;
 }
 
 .form-group {
   padding: 16px 20px;
   border-bottom: 1px solid #252538;
-}
-
-.form-group:last-child {
-  border-bottom: none;
 }
 
 .form-group label {
@@ -842,17 +1957,6 @@ h1 {
   color: #fff;
   font-size: 14px;
   outline: none;
-  font-family: inherit;
-}
-
-.form-group select:focus,
-.form-group input:focus {
-  border-color: #8b5cf6;
-}
-
-.form-group select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .form-group small {
@@ -864,15 +1968,6 @@ h1 {
 
 .form-group small.hint {
   color: #f59e0b;
-}
-
-.form-group small a {
-  color: #8b5cf6;
-  text-decoration: none;
-}
-
-.form-group small a:hover {
-  text-decoration: underline;
 }
 
 .model-select-wrapper {
@@ -891,18 +1986,6 @@ h1 {
   border-radius: 8px;
   color: #a0a0b0;
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.refresh-btn:hover:not(:disabled) {
-  background: #353550;
-  color: #fff;
-}
-
-.refresh-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .token-input {
@@ -921,16 +2004,6 @@ h1 {
   border-radius: 8px;
   color: #a0a0b0;
   cursor: pointer;
-  transition: all 0.2s;
-}
-
-.token-input button:hover {
-  background: #353550;
-  color: #fff;
-}
-
-.advanced {
-  border-bottom: 1px solid #252538;
 }
 
 .advanced summary {
@@ -938,11 +2011,6 @@ h1 {
   cursor: pointer;
   font-size: 14px;
   color: #a0a0b0;
-  user-select: none;
-}
-
-.advanced summary:hover {
-  color: #fff;
 }
 
 .modal-actions {
@@ -950,9 +2018,6 @@ h1 {
   gap: 10px;
   padding: 16px 20px;
   justify-content: flex-end;
-  position: sticky;
-  bottom: 0;
-  background: #13131f;
   border-top: 1px solid #252538;
 }
 
@@ -964,12 +2029,6 @@ h1 {
   color: #a0a0b0;
   font-size: 14px;
   cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-secondary:hover {
-  background: #353550;
-  color: #fff;
 }
 
 .btn-primary {
@@ -980,16 +2039,10 @@ h1 {
   color: #fff;
   font-size: 14px;
   cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #7c3aed;
 }
 
 .btn-primary:disabled {
   opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .test-result {
@@ -997,7 +2050,6 @@ h1 {
   padding: 12px;
   border-radius: 8px;
   font-size: 14px;
-  white-space: pre-line;
 }
 
 .test-result.success {
@@ -1008,52 +2060,5 @@ h1 {
 .test-result.error {
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
-}
-
-/* 自定义滚动条 */
-:global(.custom-scrollbar::-webkit-scrollbar) {
-  width: 6px;
-}
-
-:global(.custom-scrollbar::-webkit-scrollbar-track) {
-  background: transparent;
-}
-
-:global(.custom-scrollbar::-webkit-scrollbar-thumb) {
-  background: #353550;
-  border-radius: 3px;
-}
-
-:global(.custom-scrollbar::-webkit-scrollbar-thumb:hover) {
-  background: #4a4a6a;
-}
-
-/* 水平滚动条 */
-:global(.custom-scrollbar-x::-webkit-scrollbar) {
-  height: 4px;
-}
-
-:global(.custom-scrollbar-x::-webkit-scrollbar-track) {
-  background: transparent;
-}
-
-:global(.custom-scrollbar-x::-webkit-scrollbar-thumb) {
-  background: #353550;
-  border-radius: 2px;
-}
-
-:global(.custom-scrollbar-x::-webkit-scrollbar-thumb:hover) {
-  background: #4a4a6a;
-}
-
-/* Firefox 滚动条 */
-:global(.custom-scrollbar) {
-  scrollbar-width: thin;
-  scrollbar-color: #353550 transparent;
-}
-
-:global(.custom-scrollbar-x) {
-  scrollbar-width: thin;
-  scrollbar-color: #353550 transparent;
 }
 </style>
