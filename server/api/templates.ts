@@ -299,30 +299,34 @@ const templateDescriptions: Record<string, string> = {
 
 export function findBestTemplate(prompt: string): string {
   const lowerPrompt = prompt.toLowerCase()
-  
+
   for (const [template, keywords] of Object.entries(keywordMap)) {
     for (const keyword of keywords) {
       if (lowerPrompt.includes(keyword.toLowerCase())) {
-        return shaderTemplates[template]
+        const code = shaderTemplates[template]
+        if (code) return code
+        break
       }
     }
   }
-  
-  return shaderTemplates['default']
+
+  return shaderTemplates['default'] || ''
 }
 
 export function getTemplateDescription(prompt: string): string {
   const lowerPrompt = prompt.toLowerCase()
-  
+
   for (const [template, keywords] of Object.entries(keywordMap)) {
     for (const keyword of keywords) {
       if (lowerPrompt.includes(keyword.toLowerCase())) {
-        return templateDescriptions[template]
+        const desc = templateDescriptions[template]
+        if (desc) return desc
+        break
       }
     }
   }
-  
-  return templateDescriptions['default']
+
+  return templateDescriptions['default'] || ''
 }
 
 export function getAllTemplates(): Record<string, string> {

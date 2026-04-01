@@ -2,7 +2,7 @@
   <div class="ai-settings">
     <UButton
       variant="ghost"
-      color="gray"
+      color="neutral"
       size="sm"
       class="settings-btn"
       @click="isOpen = true"
@@ -11,13 +11,13 @@
       <span>AI Settings</span>
     </UButton>
 
-    <USlideover v-model="isOpen" :ui="{ width: 'max-w-md' }">
+    <USlideover v-model="isOpen" :ui="{ wrapper: 'max-w-md' }">
       <div class="settings-panel">
         <div class="settings-header">
           <h2>AI Configuration</h2>
           <UButton
             variant="ghost"
-            color="gray"
+            color="neutral"
             size="sm"
             @click="isOpen = false"
           >
@@ -76,7 +76,7 @@
               <template #trailing>
                 <UButton
                   variant="ghost"
-                  color="gray"
+                  color="neutral"
                   size="xs"
                   @click="showToken = !showToken"
                 >
@@ -96,7 +96,7 @@
           <div class="advanced-toggle">
             <UButton
               variant="ghost"
-              color="gray"
+              color="neutral"
               size="sm"
               @click="showAdvanced = !showAdvanced"
             >
@@ -156,7 +156,7 @@
         <div class="settings-footer">
           <UButton
             variant="ghost"
-            color="gray"
+            color="neutral"
             @click="resetSettings"
           >
             Reset
@@ -316,12 +316,13 @@ onMounted(() => {
 const onProviderChange = () => {
   // Auto-select first model of new provider
   const models = currentProvider.value?.models || []
-  if (models.length > 0) {
-    settings.model = models[0].id
+  const firstModel = models[0]
+  if (firstModel?.id) {
+    settings.model = firstModel.id
   }
   // Auto-set default URL
   if (currentProvider.value?.defaultUrl) {
-    settings.customUrl = currentProvider.value.defaultUrl
+    settings.customUrl = currentProvider.value?.defaultUrl || ''
   }
 }
 
@@ -334,7 +335,7 @@ const saveSettings = () => {
   useToast().add({
     title: 'Settings Saved',
     description: 'Your AI configuration has been saved.',
-    color: 'green',
+    color: 'success',
     icon: 'i-heroicons-check-circle'
   })
 }
@@ -365,9 +366,10 @@ const testConnection = async () => {
       }
     })
 
+    const resp = response as { success: boolean; message?: string }
     testResult.value = {
-      success: response.success,
-      message: response.message || (response.success ? 'Connection successful!' : 'Connection failed')
+      success: resp.success,
+      message: resp.message || (resp.success ? 'Connection successful!' : 'Connection failed')
     }
   } catch (error: any) {
     testResult.value = {

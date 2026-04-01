@@ -1,8 +1,8 @@
 <template>
   <div class="app">
     <!-- 侧边栏 - 代码和预览 -->
-    <aside 
-      class="sidebar custom-scrollbar" 
+    <aside
+      class="sidebar custom-scrollbar"
       :class="{ collapsed: sidebarCollapsed, resizing: isResizingSidebar }"
       ref="sidebarEl"
     >
@@ -13,59 +13,87 @@
         </button>
         <span v-if="!sidebarCollapsed" class="sidebar-title">预览 & 代码</span>
       </div>
-      
+
       <div v-if="!sidebarCollapsed" class="sidebar-content">
         <!-- 预览区 -->
         <div class="preview-section" ref="previewSectionEl">
           <div class="section-title">🎨 实时预览</div>
-          <ShaderRenderer 
+          <ShaderRenderer
             ref="shaderRenderer"
-            :fragment-shader="currentShader" 
+            :fragment-shader="currentShader"
             @screenshot-captured="onScreenshotCaptured"
+            @compile-error="onCompileError"
+            @compile-success="onCompileSuccess"
           />
         </div>
-        
+
         <!-- 拖拽条 -->
-        <div 
+        <div
           class="resize-handle-horizontal"
           @mousedown="startResizePreview"
         />
-        
+
+        <!-- 历史版本 -->
+        <ShaderHistory
+          :formatted-history="shaderHistory.formattedHistory.value"
+          :can-undo="shaderHistory.canUndo.value"
+          :can-redo="shaderHistory.canRedo.value"
+          @undo="handleUndo"
+          @redo="handleRedo"
+          @restore="handleRestore"
+          @clear="handleClearHistory"
+        />
+
         <!-- 代码区 -->
         <div class="code-section" ref="codeSectionEl">
           <div class="section-header">
             <span class="section-title">📝 代码</span>
-            <button class="icon-btn" @click="resetShader" title="重置">↺</button>
+            <div class="code-actions">
+              <button
+                class="icon-btn"
+                @click="saveToHistory"
+                title="保存当前版本"
+              >
+                💾
+              </button>
+              <button class="icon-btn" @click="resetShader" title="重置">
+                ↺
+              </button>
+            </div>
           </div>
-          <CodeEditor 
-            v-model="currentShader" 
+          <CodeEditor
+            v-model="currentShader"
             @send-to-chat="onCodeSendToChat"
           />
         </div>
       </div>
     </aside>
-    
+
     <!-- 垂直拖拽条 -->
-    <div 
+    <div
       v-if="!sidebarCollapsed"
       class="resize-handle-vertical"
       @mousedown="startResizeSidebar"
     />
-    
+
     <!-- 主体 - 对话框 -->
     <main class="main custom-scrollbar">
-      <ChatInterface 
+      <ChatInterface
         ref="chatInterface"
         @shader-generated="onShaderGenerated"
         @request-screenshot="onRequestScreenshot"
         @request-code="onRequestCode"
+        @request-compile-status="onRequestCompileStatus"
       />
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import ShaderRenderer from '~/components/ShaderRenderer.vue'
+import ShaderHistory from '~/components/ShaderHistory.vue'
+import ChatInterface from '~/components/ChatInterface.vue'
 
 const defaultShader = `precision mediump float;
 
@@ -74,14 +102,14 @@ uniform vec2 u_resolution;
 
 void main() {
   vec2 uv = gl_FragCoord.xy / u_resolution.xy;
-  
+
   // Create animated gradient
   vec3 color = vec3(
     0.5 + 0.5 * sin(u_time + uv.x * 3.14159),
     0.5 + 0.5 * sin(u_time + uv.y * 3.14159 + 2.0),
     0.5 + 0.5 * sin(u_time + (uv.x + uv.y) * 3.14159 + 4.0)
   );
-  
+
   gl_FragColor = vec4(color, 1.0);
 }`
 
@@ -89,6 +117,19 @@ const currentShader = ref(defaultShader)
 const sidebarCollapsed = ref(false)
 const chatInterface = ref(null)
 const shaderRenderer = ref(null)
+
+// 历史版本管理
+const shaderHistory = useShaderHistory()
+const toast = useToast()
+
+// 监听代码变化自动保存历史
+let historyDebounceTimer = null
+watch(currentShader, (newCode) => {
+  if (historyDebounceTimer) clearTimeout(historyDebounceTimer)
+  historyDebounceTimer = setTimeout(() => {
+    shaderHistory.addHistory(newCode, '自动保存')
+  }, 5000) // 5秒后自动保存
+}, { immediate: false })
 
 // 拖拽相关
 const sidebarEl = ref(null)
@@ -98,10 +139,55 @@ const isResizingPreview = ref(false)
 
 const onShaderGenerated = (code) => {
   currentShader.value = code
+  shaderHistory.addHistory(code, 'AI生成')
 }
 
 const resetShader = () => {
   currentShader.value = defaultShader
+  shaderHistory.addHistory(defaultShader, '重置为默认')
+}
+
+// 手动保存到历史
+const saveToHistory = () => {
+  shaderHistory.addHistory(currentShader.value, '手动保存')
+  toast.success('已保存到历史版本')
+}
+
+// 历史版本操作
+const handleUndo = () => {
+  const item = shaderHistory.undo()
+  if (item) {
+    currentShader.value = item.code
+    toast.info(`已恢复到: ${item.description}`)
+  }
+}
+
+const handleRedo = () => {
+  const item = shaderHistory.redo()
+  if (item) {
+    currentShader.value = item.code
+    toast.info(`已前进到: ${item.description}`)
+  }
+}
+
+const handleRestore = (code) => {
+  currentShader.value = code
+  toast.success('已恢复选中版本')
+}
+
+const handleClearHistory = () => {
+  if (shaderHistory.clearHistory()) {
+    toast.success('历史记录已清空')
+  }
+}
+
+// 编译状态回调
+const onCompileError = (status) => {
+  console.error('Shader compile error:', status.error)
+}
+
+const onCompileSuccess = (status) => {
+  // 编译成功，可选操作
 }
 
 // 接收截图并发送到对话
@@ -144,24 +230,24 @@ async function compressImage(dataUrl, maxSize) {
       let width = img.width
       let height = img.height
       const maxDim = Math.max(width, height)
-      
+
       if (maxDim > maxSize) {
         const scale = maxSize / maxDim
         width = Math.round(width * scale)
         height = Math.round(height * scale)
       }
-      
+
       // 创建canvas进行压缩
       const canvas = document.createElement('canvas')
       canvas.width = width
       canvas.height = height
       const ctx = canvas.getContext('2d')
-      
+
       // 使用高质量缩放
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(img, 0, 0, width, height)
-      
+
       // 转换为JPEG格式，质量0.9，平衡质量和大小
       resolve(canvas.toDataURL('image/jpeg', 0.9))
     }
@@ -175,6 +261,15 @@ const onRequestCode = ({ callback }) => {
   callback(currentShader.value)
 }
 
+// 处理 AI 工具调用 - 获取编译状态
+const onRequestCompileStatus = ({ callback }) => {
+  if (shaderRenderer.value) {
+    callback(shaderRenderer.value.getCompileStatus())
+  } else {
+    callback({ success: false, error: 'Renderer not ready' })
+  }
+}
+
 // ========== 侧边栏宽度拖拽 ==========
 function startResizeSidebar(e) {
   if (sidebarCollapsed.value) return
@@ -183,19 +278,19 @@ function startResizeSidebar(e) {
   const startWidth = sidebarEl.value.offsetWidth
   const minWidth = 360
   const maxWidth = 800
-  
+
   function onMouseMove(e) {
     const delta = e.clientX - startX
     const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + delta))
     sidebarEl.value.style.width = newWidth + 'px'
   }
-  
+
   function onMouseUp() {
     isResizingSidebar.value = false
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
   }
-  
+
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mouseup', onMouseUp)
 }
@@ -208,23 +303,28 @@ function startResizePreview(e) {
   const containerHeight = sidebarEl.value.querySelector('.sidebar-content').offsetHeight
   const minHeight = 150
   const maxHeight = containerHeight - 200
-  
+
   function onMouseMove(e) {
     const delta = e.clientY - startY
     const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + delta))
     previewSectionEl.value.style.height = newHeight + 'px'
     previewSectionEl.value.style.flex = 'none'
   }
-  
+
   function onMouseUp() {
     isResizingPreview.value = false
     document.removeEventListener('mousemove', onMouseMove)
     document.removeEventListener('mouseup', onMouseUp)
   }
-  
+
   document.addEventListener('mousemove', onMouseMove)
   document.addEventListener('mouseup', onMouseUp)
 }
+
+// 加载历史记录
+onMounted(() => {
+  shaderHistory.loadHistory()
+})
 </script>
 
 <style>
@@ -373,6 +473,12 @@ html, body {
   flex-shrink: 0;
 }
 
+.code-actions {
+  display: flex;
+  gap: 4px;
+  margin-right: 12px;
+}
+
 .icon-btn {
   width: 28px;
   height: 28px;
@@ -380,10 +486,12 @@ html, body {
   border: none;
   color: #808090;
   cursor: pointer;
-  font-size: 16px;
-  margin-right: 12px;
+  font-size: 14px;
   border-radius: 6px;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .icon-btn:hover {
@@ -440,7 +548,7 @@ html, body {
   .app {
     flex-direction: column;
   }
-  
+
   .sidebar {
     width: 100% !important;
     min-width: auto !important;
@@ -449,18 +557,18 @@ html, body {
     border-right: none;
     border-bottom: 1px solid #252538;
   }
-  
+
   .sidebar.collapsed {
     width: 100% !important;
     height: 44px;
     min-width: auto !important;
   }
-  
+
   .resize-handle-vertical,
   .resize-handle-horizontal {
     display: none;
   }
-  
+
   .main {
     min-width: auto;
     height: 60%;

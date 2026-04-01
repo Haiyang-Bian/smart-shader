@@ -291,7 +291,7 @@ async function callLocal(url: string, model: string, systemPrompt: string, userP
 
 function extractShaderCode(content: string): string {
   const codeBlockMatch = content.match(/```(?:glsl)?\n?([\s\S]*?)```/)
-  if (codeBlockMatch) {
+  if (codeBlockMatch?.[1]) {
     return codeBlockMatch[1].trim()
   }
   return content.trim()

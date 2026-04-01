@@ -54,8 +54,8 @@ export function parseToolCalls(content: string): ToolCallResult[] {
   
   while ((match = toolCallRegex.exec(content)) !== null) {
     try {
-      const name = match[1]
-      const args = JSON.parse(match[2])
+      const name = match[1] || ''
+      const args = JSON.parse(match[2] || '{}')
       toolCalls.push({ name, arguments: args })
     } catch (e) {
       console.error('Failed to parse tool call:', match[0], e)

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npx nuxi:*)",
+      "Bash(git checkout:*)",
+      "Bash(python /tmp/fix2.py)",
+      "Bash(python /tmp/fix3.py)",
+      "Bash(python /tmp/fix_all.py)",
+      "Bash(python /tmp/fix_direct.py)",
+      "Bash(python /tmp/fix_line.py)"
+    ]
+  }
+}

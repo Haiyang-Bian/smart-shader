@@ -1,57 +1,68 @@
 <template>
   <div class="shader-wrapper">
     <canvas ref="canvas" class="shader-canvas" />
-    
+
+    <!-- FPS 指示器 -->
+    <div v-if="showFps" class="fps-indicator" :class="{ 'low-performance': fpsMonitor.isLowPerformance.value }">
+      <span class="fps-dot" :style="{ background: fpsMonitor.fpsDisplay.value.color }" />
+      <span class="fps-text">{{ fpsMonitor.fpsDisplay.value.text }}</span>
+      <span v-if="fpsMonitor.isLowPerformance.value" class="fps-warning" title="性能较低，建议简化着色器">⚠️</span>
+    </div>
+
     <!-- 工具栏 -->
     <div class="shader-toolbar">
-      <button 
-        class="toolbar-btn" 
-        @click="takeScreenshot" 
+      <button
+        class="toolbar-btn"
+        @click="takeScreenshot"
         title="截图预览"
-        :disabled="!ready"
+        :disabled="!state.ready"
       >
         📷 截图
       </button>
-      <button 
+      <button
         class="toolbar-btn primary"
         @click="sendToChat"
         title="将当前渲染效果发送到对话，让AI改进"
-        :disabled="!ready"
+        :disabled="!state.ready"
       >
         💬 发送到对话
       </button>
-      <button 
-        class="toolbar-btn" 
-        :class="{ 'recording': isRecording }"
-        @click="toggleRecording" 
-        :disabled="!ready"
+      <button
+        class="toolbar-btn"
+        :class="{ 'recording': state.isRecording }"
+        @click="toggleRecording"
+        :disabled="!state.ready"
       >
-        <span v-if="isRecording">⏹ 停止 ({{ formatTime(recordTime) }})</span>
+        <span v-if="state.isRecording">⏹ 停止 ({{ formatTime(state.recordTime) }})</span>
         <span v-else>🎥 录屏</span>
       </button>
-      <button 
-        v-if="recordedBlob"
+      <button
+        v-if="state.recordedBlob"
         class="toolbar-btn download"
         @click="downloadVideo"
       >
         💾 下载视频
       </button>
     </div>
-    
+
     <!-- 状态提示 -->
-    <div v-if="error" class="shader-error">
+    <div v-if="state.error" class="shader-error">
       <span>⚠️</span>
-      <p>{{ error }}</p>
+      <p>{{ state.error }}</p>
+      <details v-if="state.compileError">
+        <summary>查看详细错误</summary>
+        <pre>{{ state.compileError }}</pre>
+      </details>
     </div>
-    <div v-else-if="!ready" class="shader-loading">
+    <div v-else-if="!state.ready" class="shader-loading">
       <span class="spinner"></span>
       <p>初始化 WebGL...</p>
     </div>
-    
+
     <!-- 截图预览弹窗 -->
-    <div v-if="screenshotUrl" class="screenshot-modal" @click.self="closeScreenshot">
+    <div v-if="state.screenshotUrl" class="screenshot-modal" @click.self="closeScreenshot">
       <div class="screenshot-content">
-        <img :src="screenshotUrl" alt="截图" />
+        <img :src="state.screenshotUrl" alt="截图" />
         <div class="screenshot-actions">
           <button class="btn-primary" @click="confirmSendToChat">
             💬 发送到对话
@@ -67,28 +78,34 @@
 
 <script setup>
 const props = defineProps({
-  fragmentShader: String
+  fragmentShader: String,
+  showFps: {
+    type: Boolean,
+    default: true
+  }
 })
 
-const emit = defineEmits(['screenshot-captured'])
+const emit = defineEmits(['screenshot-captured', 'compile-error', 'compile-success'])
 
 const canvas = ref(null)
-const error = ref('')
-const ready = ref(false)
+const fpsMonitor = useFpsMonitor()
+const toast = useToast()
 
-// 截图相关
-const screenshotUrl = ref('')
-const screenshotBlob = ref(null)
+const state = reactive({
+  ready: false,
+  error: '',
+  compileError: '',
+  screenshotUrl: '',
+  screenshotBlob: null,
+  isRecording: false,
+  recordedBlob: null,
+  recordTime: 0
+})
 
-// 录制相关
-const isRecording = ref(false)
-const recordedBlob = ref(null)
-const recordTime = ref(0)
+let gl, program, animId, startTime
 let mediaRecorder = null
 let recordInterval = null
 let recordedChunks = []
-
-let gl, program, animId, startTime
 
 const vs = `
 attribute vec2 position;
@@ -102,6 +119,7 @@ function compile(gl, src, type) {
   gl.compileShader(s)
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
     const info = gl.getShaderInfoLog(s)
+    state.compileError = 'Shader compile error: ' + (info || 'unknown')
     gl.deleteShader(s)
     throw new Error('Shader compile: ' + info)
   }
@@ -110,74 +128,109 @@ function compile(gl, src, type) {
 
 function init() {
   if (!canvas.value) return
-  
-  error.value = ''
-  ready.value = false
-  
+
+  state.error = ''
+  state.compileError = ''
+  state.ready = false
+
   if (animId) cancelAnimationFrame(animId)
-  
-  gl = canvas.value.getContext('webgl', { antialias: true, preserveDrawingBuffer: true })
+
+  gl = canvas.value.getContext('webgl', {
+    antialias: true,
+    preserveDrawingBuffer: true,
+    powerPreference: 'high-performance'
+  })
+
   if (!gl) {
-    error.value = 'WebGL 不支持'
+    state.error = 'WebGL 不支持'
+    state.compileError = 'WebGL not supported'
+    emit('compile-error', { success: false, error: 'WebGL not supported' })
     return
   }
-  
+
+  // 检查 WebGL 扩展
+  const loseContext = gl.getExtension('WEBGL_lose_context')
+  if (loseContext) {
+    canvas.value.addEventListener('webglcontextlost', handleContextLost)
+    canvas.value.addEventListener('webglcontextrestored', handleContextRestored)
+  }
+
   resizeCanvas()
   window.addEventListener('resize', resizeCanvas)
-  
+
   try {
     const v = compile(gl, vs, gl.VERTEX_SHADER)
     const f = compile(gl, props.fragmentShader, gl.FRAGMENT_SHADER)
-    
+
     program = gl.createProgram()
     gl.attachShader(program, v)
     gl.attachShader(program, f)
     gl.linkProgram(program)
-    
+
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      throw new Error('Program link failed')
+      const info = gl.getProgramInfoLog(program)
+      state.compileError = 'Program link error: ' + (info || 'unknown')
+      throw new Error('Program link failed: ' + info)
     }
-    
+
     const buf = gl.createBuffer()
     gl.bindBuffer(gl.ARRAY_BUFFER, buf)
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW)
-    
+
     const pos = gl.getAttribLocation(program, 'position')
     gl.enableVertexAttribArray(pos)
     gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0)
-    
-    startTime = Date.now()
-    ready.value = true
-    
+
+    startTime = performance.now()
+    state.ready = true
+    emit('compile-success', { success: true, error: null })
+
+    fpsMonitor.start()
+
     const loop = () => {
       if (!gl || !program || !canvas.value) return
-      
-      const t = (Date.now() - startTime) / 1000
+
+      const t = (performance.now() - startTime) / 1000
       const w = canvas.value.width
       const h = canvas.value.height
-      
+
       gl.useProgram(program)
-      
+
       const tLoc = gl.getUniformLocation(program, 'u_time')
       const rLoc = gl.getUniformLocation(program, 'u_resolution')
-      
+
       if (tLoc) gl.uniform1f(tLoc, t)
       if (rLoc) gl.uniform2f(rLoc, w, h)
-      
+
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
       animId = requestAnimationFrame(loop)
     }
-    
+
     loop()
   } catch (e) {
-    error.value = e.message
+    state.error = e.message
+    if (!state.compileError) {
+      state.compileError = e.message
+    }
+    emit('compile-error', { success: false, error: e.message })
   }
+}
+
+function handleContextLost(e) {
+  e.preventDefault()
+  state.error = 'WebGL 上下文丢失，尝试恢复...'
+  fpsMonitor.stop()
+}
+
+function handleContextRestored() {
+  state.error = ''
+  nextTick(() => init())
 }
 
 function resizeCanvas() {
   if (!canvas.value || !gl) return
   const rect = canvas.value.parentElement.getBoundingClientRect()
-  const dpr = window.devicePixelRatio || 1
+  const dpr = Math.min(window.devicePixelRatio || 1, 2) // 限制 DPR 避免性能问题
   canvas.value.width = rect.width * dpr
   canvas.value.height = rect.height * dpr
   gl.viewport(0, 0, canvas.value.width, canvas.value.height)
@@ -185,86 +238,58 @@ function resizeCanvas() {
 
 // ============ 截图功能 ============
 async function takeScreenshot(silent = false) {
-  if (!canvas.value || !ready.value) return null
-  
+  if (!canvas.value || !state.ready) return null
+
   const dataUrl = canvas.value.toDataURL('image/png', 1.0)
-  
-  // 同时创建 blob 用于上传
+
   const blob = await new Promise(resolve => {
     canvas.value.toBlob(resolve, 'image/png', 1.0)
   })
-  
+
   if (!silent) {
-    screenshotUrl.value = dataUrl
-    screenshotBlob.value = blob
+    state.screenshotUrl = dataUrl
+    state.screenshotBlob = blob
   }
-  
+
   return { dataUrl, blob }
 }
 
 function closeScreenshot() {
-  screenshotUrl.value = ''
-  screenshotBlob.value = null
+  state.screenshotUrl = ''
+  state.screenshotBlob = null
 }
 
 function downloadScreenshot() {
-  if (!screenshotUrl.value) return
-  
+  if (!state.screenshotUrl) return
+
   const link = document.createElement('a')
   link.download = `shader-${Date.now()}.png`
-  link.href = screenshotUrl.value
+  link.href = state.screenshotUrl
   link.click()
+  toast.success('截图已下载')
 }
 
 // ============ 发送到对话功能 ============
 function sendToChat() {
   takeScreenshot()
-  // 截图后弹窗显示，用户确认后再发送
 }
 
 async function confirmSendToChat() {
-  if (!screenshotUrl.value) return
-  
-  // 发送事件给父组件 - 用户手动发送不压缩
+  if (!state.screenshotUrl) return
+
   emit('screenshot-captured', {
-    dataUrl: screenshotUrl.value,
-    blob: screenshotBlob.value,
+    dataUrl: state.screenshotUrl,
+    blob: state.screenshotBlob,
     timestamp: Date.now()
   })
-  
-  closeScreenshot()
-  
-  // 显示提示
-  showToast('截图已添加到输入框，添加描述后发送即可')
-}
 
-function showToast(message) {
-  // 简单的 toast 提示
-  const toast = document.createElement('div')
-  toast.style.cssText = `
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #8b5cf6;
-    color: white;
-    padding: 12px 24px;
-    border-radius: 8px;
-    font-size: 14px;
-    z-index: 9999;
-    animation: fadeInOut 2s ease;
-  `
-  toast.textContent = message
-  document.body.appendChild(toast)
-  
-  setTimeout(() => {
-    toast.remove()
-  }, 2000)
+  closeScreenshot()
+  toast.success('截图已添加到输入框，添加描述后发送即可')
 }
 
 // ============ 视频录制功能 ============
 function toggleRecording() {
-  if (isRecording.value) {
+  if (state.isRecording) {
     stopRecording()
   } else {
     startRecording()
@@ -272,21 +297,21 @@ function toggleRecording() {
 }
 
 function startRecording() {
-  if (!canvas.value || !ready.value) return
-  
+  if (!canvas.value || !state.ready) return
+
   recordedChunks = []
-  recordedBlob.value = null
-  recordTime.value = 0
-  
+  state.recordedBlob = null
+  state.recordTime = 0
+
   const stream = canvas.value.captureStream(60)
-  
+
   const mimeTypes = [
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
     'video/webm',
     'video/mp4'
   ]
-  
+
   let selectedMimeType = ''
   for (const type of mimeTypes) {
     if (MediaRecorder.isTypeSupported(type)) {
@@ -294,59 +319,63 @@ function startRecording() {
       break
     }
   }
-  
+
   if (!selectedMimeType) {
-    alert('您的浏览器不支持视频录制')
+    toast.error('您的浏览器不支持视频录制')
     return
   }
-  
+
   mediaRecorder = new MediaRecorder(stream, {
     mimeType: selectedMimeType,
     videoBitsPerSecond: 8000000
   })
-  
+
   mediaRecorder.ondataavailable = (event) => {
     if (event.data && event.data.size > 0) {
       recordedChunks.push(event.data)
     }
   }
-  
+
   mediaRecorder.onstop = () => {
-    recordedBlob.value = new Blob(recordedChunks, { type: selectedMimeType })
+    state.recordedBlob = new Blob(recordedChunks, { type: selectedMimeType })
   }
-  
+
   mediaRecorder.start(100)
-  isRecording.value = true
-  
+  state.isRecording = true
+
   recordInterval = setInterval(() => {
-    recordTime.value++
-    if (recordTime.value >= 30) {
+    state.recordTime++
+    if (state.recordTime >= 30) {
       stopRecording()
     }
   }, 1000)
+
+  toast.info('开始录制，最长 30 秒')
 }
 
 function stopRecording() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return
-  
+
   mediaRecorder.stop()
-  isRecording.value = false
-  
+  state.isRecording = false
+
   if (recordInterval) {
     clearInterval(recordInterval)
     recordInterval = null
   }
+
+  toast.success('录制完成，可以点击下载按钮保存')
 }
 
 function downloadVideo() {
-  if (!recordedBlob.value) return
-  
-  const url = URL.createObjectURL(recordedBlob.value)
+  if (!state.recordedBlob) return
+
+  const url = URL.createObjectURL(state.recordedBlob)
   const link = document.createElement('a')
   link.download = `shader-video-${Date.now()}.webm`
   link.href = url
   link.click()
-  
+
   URL.revokeObjectURL(url)
 }
 
@@ -364,11 +393,20 @@ onMounted(() => {
   nextTick(init)
 })
 
-// 暴露方法给父组件
+function getCompileStatus() {
+  if (!state.ready && !state.compileError) {
+    return { success: false, error: 'Shader not initialized yet' }
+  }
+  if (state.compileError) {
+    return { success: false, error: state.compileError }
+  }
+  return { success: true, error: null }
+}
+
 defineExpose({
   takeScreenshot,
   closeScreenshot,
-  screenshotUrl
+  getCompileStatus
 })
 
 onUnmounted(() => {
@@ -377,7 +415,12 @@ onUnmounted(() => {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop()
   }
+  if (canvas.value) {
+    canvas.value.removeEventListener('webglcontextlost', handleContextLost)
+    canvas.value.removeEventListener('webglcontextrestored', handleContextRestored)
+  }
   window.removeEventListener('resize', resizeCanvas)
+  fpsMonitor.stop()
 })
 </script>
 
@@ -395,6 +438,38 @@ onUnmounted(() => {
   flex: 1;
   width: 100%;
   min-height: 0;
+}
+
+/* FPS 指示器 */
+.fps-indicator {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 20px;
+  font-size: 12px;
+  color: #fff;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+.fps-indicator.low-performance {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.fps-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.fps-warning {
+  cursor: help;
 }
 
 /* 工具栏 */
@@ -480,6 +555,28 @@ onUnmounted(() => {
   color: #606070;
 }
 
+.shader-error details {
+  margin-top: 12px;
+  color: #808090;
+  font-size: 12px;
+}
+
+.shader-error details summary {
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.shader-error details pre {
+  text-align: left;
+  background: #1a1a2a;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .spinner {
   width: 24px;
   height: 24px;
@@ -562,12 +659,5 @@ onUnmounted(() => {
   font-size: 13px;
   text-align: center;
   margin: 0;
-}
-
-@keyframes fadeInOut {
-  0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
-  20% { opacity: 1; transform: translateX(-50%) translateY(0); }
-  80% { opacity: 1; transform: translateX(-50%) translateY(0); }
-  100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
 }
 </style>

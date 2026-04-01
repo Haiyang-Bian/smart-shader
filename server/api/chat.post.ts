@@ -399,7 +399,7 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
               const shaderMatch = fullContent.match(/```(?:glsl|shader)\n?([\s\S]*?)```/) || 
                                  fullContent.match(/<shader>([\s\S]*?)<\/shader>/)
 
-              if (shaderMatch) {
+              if (shaderMatch && shaderMatch[1]) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'shader', code: shaderMatch[1].trim() })}\n\n`))
               }
               controller.enqueue(encoder.encode('data: [DONE]\n\n'))
@@ -524,7 +524,7 @@ async function handleNormalResponse(messages: any[], settings: any, enableTools:
   // 支持 Markdown 代码块和旧的 <shader> 标签
   const shaderMatch = content.match(/```(?:glsl|shader)\n?([\s\S]*?)```/) || 
                      content.match(/<shader>([\s\S]*?)<\/shader>/)
-  const shaderCode = shaderMatch ? shaderMatch[1].trim() : null
+  const shaderCode = shaderMatch?.[1] ? shaderMatch[1].trim() : null
   
   // 移除代码块内容，保留其他文本
   const cleanContent = content
