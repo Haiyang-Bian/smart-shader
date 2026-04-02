@@ -10,23 +10,14 @@ const defaultSettings: AISettings = {
 }
 
 const defaultModels: Record<string, ModelInfo[]> = {
-  builtin: [{ id: 'template', name: '模板匹配', description: '' }],
-  anthropic: [
-    { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: '最强大的模型' },
-    { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: '均衡性能' },
-    { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: '快速响应' }
-  ],
-  moonshot: [
-    { id: 'kimi-k2.5', name: 'Kimi K2.5', description: '最新模型' },
-    { id: 'kimi-k2', name: 'Kimi K2', description: '' },
-    { id: 'moonshot-v1-8k', name: 'Moonshot v1 (8K)', description: '只支持 temperature=1' }
-  ]
+  builtin: [{ id: 'template', name: '模板匹配', description: '' }]
 }
 
 const providers: ProviderConfig[] = [
   { id: 'builtin', name: '内置助手 (无需API)', desc: '使用预设模板，无需配置', fetchModels: false },
   { id: 'openai', name: 'OpenAI', desc: 'GPT-4, GPT-3.5', fetchModels: true },
-  { id: 'anthropic', name: 'Anthropic', desc: 'Claude 3 系列', fetchModels: false },
+  { id: 'anthropic', name: 'Anthropic', desc: 'Claude 3 系列', fetchModels: true },
+  { id: 'google', name: 'Google (Gemini)', desc: 'Gemini 系列', fetchModels: true },
   { id: 'moonshot', name: '月之暗面 (Moonshot)', desc: 'Kimi 大模型', fetchModels: true },
   { id: 'openrouter', name: 'OpenRouter', desc: '多模型聚合平台', fetchModels: true },
   { id: 'local', name: '本地/Ollama', desc: '自建模型服务', fetchModels: true }
@@ -58,10 +49,13 @@ export function useSettings() {
       try {
         const parsed = JSON.parse(saved)
         Object.assign(settings, parsed)
-        if (settings.provider !== 'builtin' && settings.token) {
-          fetchModels()
+        if (settings.provider !== 'builtin') {
+          availableModels.value = settings.model && settings.model !== 'template'
+            ? [{ id: settings.model, name: settings.model, description: '' }]
+            : []
+          if (settings.token) fetchModels()
         } else {
-          availableModels.value = defaultModels[settings.provider] || defaultModels.builtin
+          availableModels.value = defaultModels.builtin
         }
       } catch (e) {
         availableModels.value = defaultModels.builtin
@@ -91,7 +85,7 @@ export function useSettings() {
   async function fetchModels() {
     if (settings.provider === 'builtin') return
     if (!settings.token) {
-      availableModels.value = defaultModels[settings.provider] || []
+      availableModels.value = []
       return
     }
 
@@ -106,17 +100,23 @@ export function useSettings() {
       }) as { error?: string; models?: ModelInfo[] }
 
       if (res.error) {
-        availableModels.value = defaultModels[settings.provider] || []
+        availableModels.value = settings.model && settings.model !== 'template'
+          ? [{ id: settings.model, name: settings.model, description: '' }]
+          : []
       } else if (res.models?.length) {
         availableModels.value = res.models
         if (!availableModels.value.find(m => m.id === settings.model)) {
           settings.model = availableModels.value[0].id
         }
       } else {
-        availableModels.value = defaultModels[settings.provider] || []
+        availableModels.value = settings.model && settings.model !== 'template'
+          ? [{ id: settings.model, name: settings.model, description: '' }]
+          : []
       }
     } catch (err) {
-      availableModels.value = defaultModels[settings.provider] || []
+      availableModels.value = settings.model && settings.model !== 'template'
+        ? [{ id: settings.model, name: settings.model, description: '' }]
+        : []
     } finally {
       fetchingModels.value = false
     }
@@ -128,10 +128,9 @@ export function useSettings() {
       availableModels.value = defaultModels.builtin
       settings.model = 'template'
     } else {
-      availableModels.value = defaultModels[settings.provider] || []
-      if (availableModels.value.length > 0) {
-        settings.model = availableModels.value[0].id
-      }
+      availableModels.value = settings.model && settings.model !== 'template'
+        ? [{ id: settings.model, name: settings.model, description: '' }]
+        : []
       if (settings.token) fetchModels()
     }
   }

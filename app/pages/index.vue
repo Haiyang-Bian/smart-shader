@@ -62,6 +62,7 @@
             </div>
           </div>
           <CodeEditor
+            ref="codeEditor"
             v-model="currentShader"
             @send-to-chat="onCodeSendToChat"
           />
@@ -84,6 +85,9 @@
         @request-screenshot="onRequestScreenshot"
         @request-code="onRequestCode"
         @request-compile-status="onRequestCompileStatus"
+        @request-code-range="onRequestCodeRange"
+        @modify-code-range="onModifyCodeRange"
+        @insert-code="onInsertCode"
       />
     </main>
   </div>
@@ -117,6 +121,7 @@ const currentShader = ref(defaultShader)
 const sidebarCollapsed = ref(false)
 const chatInterface = ref(null)
 const shaderRenderer = ref(null)
+const codeEditor = ref(null)
 
 // 历史版本管理
 const shaderHistory = useShaderHistory()
@@ -175,8 +180,8 @@ const handleRestore = (code) => {
   toast.success('已恢复选中版本')
 }
 
-const handleClearHistory = () => {
-  if (shaderHistory.clearHistory()) {
+const handleClearHistory = async () => {
+  if (await shaderHistory.clearHistory()) {
     toast.success('历史记录已清空')
   }
 }
@@ -267,6 +272,38 @@ const onRequestCompileStatus = ({ callback }) => {
     callback(shaderRenderer.value.getCompileStatus())
   } else {
     callback({ success: false, error: 'Renderer not ready' })
+  }
+}
+
+// 处理 AI 工具调用 - 获取代码行范围
+const onRequestCodeRange = ({ startLine, endLine, callback }) => {
+  if (codeEditor.value) {
+    const code = codeEditor.value.getCodeRange(startLine, endLine)
+    callback(code)
+  } else {
+    callback('')
+  }
+}
+
+// 处理 AI 工具调用 - 修改代码行范围
+const onModifyCodeRange = ({ startLine, endLine, newCode, callback }) => {
+  if (codeEditor.value) {
+    const fullCode = codeEditor.value.modifyCodeRange(startLine, endLine, newCode)
+    currentShader.value = fullCode
+    callback(fullCode)
+  } else {
+    callback('')
+  }
+}
+
+// 处理 AI 工具调用 - 插入代码
+const onInsertCode = ({ lineNumber, newCode, callback }) => {
+  if (codeEditor.value) {
+    const fullCode = codeEditor.value.insertCodeAfter(lineNumber, newCode)
+    currentShader.value = fullCode
+    callback(fullCode)
+  } else {
+    callback('')
   }
 }
 

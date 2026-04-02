@@ -9,7 +9,24 @@
       "Bash(python /tmp/fix_all.py)",
       "Bash(python /tmp/fix_direct.py)",
       "Bash(python /tmp/fix_line.py)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(curl -s -X POST http://localhost:3002/api/admin/login -H \"Content-Type: application/json\" -d '{\"password\":\"admin123\"}')",
+      "Bash(curl -s http://localhost:3002/api/admin/logs -H \"x-admin-password: admin123\")",
+      "Bash(curl -s http://localhost:3002/api/admin/conversations -H \"x-admin-password: admin123\")",
+      "Bash(curl -s -X POST http://localhost:3002/api/chat -H \"Content-Type: application/json\" -d '{\"messages\":[{\"id\":\"msg1\",\"role\":\"user\",\"content\":\"Test message\",\"timestamp\":1710000000000}],\"settings\":{\"provider\":\"builtin\"},\"stream\":false,\"conversationId\":\"conv-test-1\"}')",
+      "Bash(curl -s http://localhost:3002/api/admin/conversations/conv-test-1 -H \"x-admin-password: admin123\")",
+      "Bash(curl -s -N -X POST http://localhost:3002/api/chat -H \"Content-Type: application/json\" -d '{\"messages\":[{\"id\":\"msg2\",\"role\":\"user\",\"content\":\"stream test\",\"timestamp\":1710000000001}],\"settings\":{\"provider\":\"builtin\"},\"stream\":true,\"conversationId\":\"conv-test-1\"}')",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s -X POST http://localhost:3003/api/chat -H \"Content-Type: application/json\" -d '{\"messages\":[{\"id\":\"m1\",\"role\":\"user\",\"content\":\"test openai\",\"timestamp\":1710000000000}],\"settings\":{\"provider\":\"openai\",\"model\":\"gpt-4o\",\"token\":\"fake-token\"},\"stream\":false,\"conversationId\":\"conv-openai-test\"}')",
+      "Bash(curl -s \"http://localhost:3004/api/models?provider=openai&token=demo\")",
+      "Bash(curl -s -X POST http://localhost:3004/api/chat -H \"Content-Type: application/json\" -d '{\"messages\":[{\"id\":\"m1\",\"role\":\"user\",\"content\":\"tool test\",\"timestamp\":1710000000000}],\"settings\":{\"provider\":\"openai\",\"model\":\"gpt-4o\",\"token\":\"fake\"},\"stream\":false,\"conversationId\":\"conv-tool-test\",\"enableTools\":true}')",
+      "Bash(curl -s -X POST http://localhost:3004/api/chat -H \"Content-Type: application/json\" -d '{\"messages\":[{\"id\":\"m1\",\"role\":\"user\",\"content\":\"builtin tool test\",\"timestamp\":1710000000000}],\"settings\":{\"provider\":\"builtin\"},\"stream\":false,\"conversationId\":\"conv-builtin-tool\",\"enableTools\":true}')",
+      "Bash(netstat -ano)",
+      "Bash(npx kill-port:*)",
+      "Bash(PORT=3000 npm run:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(ls:*)",
+      "Bash(git add:*)"
     ]
   }
 }

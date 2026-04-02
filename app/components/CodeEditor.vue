@@ -30,14 +30,15 @@ const emit = defineEmits(['update:modelValue', 'send-to-chat'])
 const isClient = ref(false)
 const editorEl = ref(null)
 let editor = null
+let monaco = null
 
 onMounted(async () => {
   isClient.value = true
   await nextTick()
-  
+
   if (!editorEl.value) return
-  
-  const monaco = await import('monaco-editor')
+
+  monaco = await import('monaco-editor')
   
   // GLSL language definition
   monaco.languages.register({ id: 'glsl' })
@@ -300,16 +301,103 @@ function formatCode() {
 // Send code to chat
 function sendToChat() {
   if (!editor) return
-  
+
   const code = editor.getValue()
   if (!code.trim()) return
-  
+
   emit('send-to-chat', {
     type: 'code',
     content: code,
     timestamp: Date.now()
   })
 }
+
+// 获取代码总行数
+function getLineCount() {
+  if (!editor) return 0
+  return editor.getModel()?.getLineCount() || 0
+}
+
+// 获取指定行范围的内容
+function getCodeRange(startLine, endLine) {
+  if (!editor) return ''
+  const model = editor.getModel()
+  if (!model) return ''
+
+  const totalLines = model.getLineCount()
+  const start = Math.max(1, Math.min(startLine, totalLines))
+  const end = Math.max(start, Math.min(endLine, totalLines))
+
+  const range = new monaco.Range(start, 1, end, model.getLineMaxColumn(end))
+  return model.getValueInRange(range)
+}
+
+// 修改指定行范围的内容
+function modifyCodeRange(startLine, endLine, newCode) {
+  if (!editor) return ''
+  const model = editor.getModel()
+  if (!model) return ''
+
+  const totalLines = model.getLineCount()
+  const start = Math.max(1, Math.min(startLine, totalLines))
+  const end = Math.max(start, Math.min(endLine, totalLines))
+
+  const range = new monaco.Range(start, 1, end, model.getLineMaxColumn(end))
+
+  // 执行编辑
+  editor.executeEdits('modify-range', [{
+    range: range,
+    text: newCode,
+    forceMoveMarkers: true
+  }])
+
+  // 自动格式化
+  formatCode()
+
+  // 更新 modelValue
+  emit('update:modelValue', editor.getValue())
+
+  return editor.getValue()
+}
+
+// 在指定行后插入代码
+function insertCodeAfter(lineNumber, newCode) {
+  if (!editor) return ''
+  const model = editor.getModel()
+  if (!model) return ''
+
+  const totalLines = model.getLineCount()
+  const line = Math.max(0, Math.min(lineNumber, totalLines))
+
+  // 在指定行末尾插入
+  const endColumn = line === 0 ? 1 : model.getLineMaxColumn(line)
+  const range = new monaco.Range(line, endColumn, line, endColumn)
+
+  // 如果不是在文件末尾，需要添加换行符
+  const codeToInsert = line === totalLines ? newCode : '\n' + newCode
+
+  editor.executeEdits('insert-code', [{
+    range: range,
+    text: codeToInsert,
+    forceMoveMarkers: true
+  }])
+
+  // 自动格式化
+  formatCode()
+
+  // 更新 modelValue
+  emit('update:modelValue', editor.getValue())
+
+  return editor.getValue()
+}
+
+// 暴露方法给父组件
+defineExpose({
+  getLineCount,
+  getCodeRange,
+  modifyCodeRange,
+  insertCodeAfter
+})
 </script>
 
 <style scoped>

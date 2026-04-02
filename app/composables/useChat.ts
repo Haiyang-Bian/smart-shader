@@ -2,6 +2,7 @@ import type { Message, ChatRequestBody, AISettings, ToolCall, ToolResult } from 
 
 export function useChat(conversationId?: Ref<string | null>) {
   const { updateMessages, currentMessages, currentId } = useConversations()
+  const { confirm } = useConfirmDialog()
 
   const messages = ref<Message[]>([])
   const input = ref('')
@@ -63,12 +64,18 @@ export function useChat(conversationId?: Ref<string | null>) {
   }
 
   // 更新最后一条消息
-  function updateLastMessage(updater: Partial<Message> | ((msg: Message) => Partial<Message>)) {
-    const last = messages.value[messages.value.length - 1]
-    if (last) {
-      Object.assign(last, typeof updater === 'function' ? updater(last) : updater)
+  function updateLastMessage(
+    updater: Partial<Message> | ((msg: Message) => Partial<Message>),
+    messageId?: number
+  ) {
+    // 如果指定了 messageId，查找对应的消息；否则更新最后一条
+    const target = messageId
+      ? messages.value.find(m => m.id === messageId)
+      : messages.value[messages.value.length - 1]
+    if (target) {
+      Object.assign(target, typeof updater === 'function' ? updater(target) : updater)
     }
-    return last
+    return target
   }
 
   // 加载历史消息（从当前对话）
@@ -86,8 +93,15 @@ export function useChat(conversationId?: Ref<string | null>) {
   }
 
   // 清空当前对话
-  function clearChat() {
-    if (confirm('确定要清空当前对话吗？')) {
+  async function clearChat() {
+    const confirmed = await confirm({
+      title: '清空对话',
+      message: '确定要清空当前对话吗？',
+      confirmText: '清空',
+      cancelText: '取消',
+      type: 'warning'
+    })
+    if (confirmed) {
       messages.value = []
       pendingImage.value = null
       pendingCode.value = ''
@@ -134,13 +148,32 @@ export function useChat(conversationId?: Ref<string | null>) {
     }
   }
 
+  // 安全解析 JSON 参数
+  function safeParseArgs(argsStr: string | undefined): any {
+    if (!argsStr) return {}
+    try {
+      const cleaned = argsStr.trim()
+      return JSON.parse(cleaned)
+    } catch (e) {
+      try {
+        const withoutCodeBlock = argsStr.replace(/```[\s\S]*?```/g, '').trim()
+        if (withoutCodeBlock) {
+          return JSON.parse(withoutCodeBlock)
+        }
+      } catch (e2) {
+        // 忽略
+      }
+      return {}
+    }
+  }
+
   // 解析工具调用
   function parseToolCalls(message: Message): ToolCall[] {
     if (message.toolCalls && Array.isArray(message.toolCalls)) {
       return message.toolCalls.map(tc => ({
         id: tc.id,
         name: tc.name || tc.function?.name || '',
-        arguments: typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : tc.function?.arguments || '{}'
+        arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.function?.arguments || {})
       }))
     }
     return []
@@ -180,6 +213,7 @@ export function useChat(conversationId?: Ref<string | null>) {
     abortController.value = new AbortController()
 
     const assistantMsg = addMessage('assistant', '', { isStreaming: true })
+    const assistantMsgId = assistantMsg.id
     callbacks.scrollToBottom()
 
     try {
@@ -197,7 +231,8 @@ export function useChat(conversationId?: Ref<string | null>) {
         body: JSON.stringify({
           messages: history,
           settings: settings.provider === 'builtin' ? null : { ...settings },
-          stream: true
+          stream: true,
+          conversationId: conversationId?.value || currentId.value
         } as ChatRequestBody),
         signal: abortController.value.signal
       })
@@ -234,20 +269,20 @@ export function useChat(conversationId?: Ref<string | null>) {
               callbacks.scrollToBottom()
             } else if (parsed.type === 'reasoning_end') {
               streamingReasoning.value = ''
-              updateLastMessage({ reasoning: fullReasoning })
+              updateLastMessage({ reasoning: fullReasoning }, assistantMsgId)
             } else if (parsed.type === 'content') {
               fullContent += parsed.content
-              updateLastMessage({ content: fullContent })
+              updateLastMessage({ content: fullContent }, assistantMsgId)
               callbacks.scrollToBottom()
             } else if (parsed.type === 'shader') {
               shaderCode = parsed.code
-              updateLastMessage({ shaderCode })
+              updateLastMessage({ shaderCode }, assistantMsgId)
             } else if (parsed.type === 'tool_calls') {
               updateLastMessage({
                 content: fullContent + '\n\n[正在执行工具...]',
                 isStreaming: false,
                 toolCalls: parsed.calls
-              })
+              }, assistantMsgId)
 
               const toolResults = await callbacks.onToolCalls(parsed.calls)
               const screenshotResult = toolResults.find(r => r.name === 'capture_screenshot' && r.image)
@@ -258,7 +293,7 @@ export function useChat(conversationId?: Ref<string | null>) {
                 shaderCode,
                 toolResults: toolResults,
                 image: screenshotResult?.image
-              })
+              }, assistantMsgId)
 
               addMessage('system', formatToolResults(toolResults))
 
@@ -271,16 +306,16 @@ export function useChat(conversationId?: Ref<string | null>) {
       }
 
       // 检查是否有工具调用（备选）
-      const lastMsg = messages.value[messages.value.length - 1]
-      const toolCalls = parseToolCalls(lastMsg)
+      const lastMsg = messages.value.find(m => m.id === assistantMsgId)
+      const toolCalls = lastMsg ? parseToolCalls(lastMsg) : []
 
-      if (toolCalls.length > 0 && !lastMsg.toolResultsProcessed) {
+      if (toolCalls.length > 0 && lastMsg && !lastMsg.toolResultsProcessed) {
         lastMsg.toolResultsProcessed = true
 
         updateLastMessage({
           content: fullContent + '\n\n[正在执行工具...]',
           isStreaming: false
-        })
+        }, assistantMsgId)
 
         const toolResults = await callbacks.onToolCalls(toolCalls)
         const screenshotResult = toolResults.find(r => r.name === 'capture_screenshot' && r.image)
@@ -290,7 +325,7 @@ export function useChat(conversationId?: Ref<string | null>) {
           reasoning: fullReasoning,
           shaderCode,
           image: screenshotResult?.image
-        })
+        }, assistantMsgId)
 
         addMessage('system', formatToolResults(toolResults))
         await continueStreamingWithToolResults(settings, callbacks)
@@ -303,7 +338,7 @@ export function useChat(conversationId?: Ref<string | null>) {
         content: fullContent,
         reasoning: fullReasoning || undefined,
         shaderCode
-      })
+      }, assistantMsgId)
 
       if (shaderCode) {
         callbacks.onShaderCode(shaderCode)
@@ -313,12 +348,12 @@ export function useChat(conversationId?: Ref<string | null>) {
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        updateLastMessage({ content: '(已停止生成)', isStreaming: false })
+        updateLastMessage({ content: '(已停止生成)', isStreaming: false }, assistantMsgId)
       } else {
         updateLastMessage({
           content: `❌ 出错了: ${error.message || '请检查网络连接和API设置'}`,
           isStreaming: false
-        })
+        }, assistantMsgId)
         callbacks.onError(error)
       }
       saveMessages()
@@ -350,6 +385,7 @@ export function useChat(conversationId?: Ref<string | null>) {
         })
 
       const assistantMsg = addMessage('assistant', '', { isStreaming: true })
+      const assistantMsgId = assistantMsg.id
       callbacks.scrollToBottom()
 
       const response = await fetch('/api/chat', {
@@ -358,7 +394,8 @@ export function useChat(conversationId?: Ref<string | null>) {
         body: JSON.stringify({
           messages: history,
           settings: settings.provider === 'builtin' ? null : { ...settings },
-          stream: true
+          stream: true,
+          conversationId: conversationId?.value || currentId.value
         } as ChatRequestBody)
       })
 
@@ -394,14 +431,14 @@ export function useChat(conversationId?: Ref<string | null>) {
               callbacks.scrollToBottom()
             } else if (parsed.type === 'reasoning_end') {
               streamingReasoning.value = ''
-              updateLastMessage({ reasoning: fullReasoning })
+              updateLastMessage({ reasoning: fullReasoning }, assistantMsgId)
             } else if (parsed.type === 'content') {
               fullContent += parsed.content
-              updateLastMessage({ content: fullContent })
+              updateLastMessage({ content: fullContent }, assistantMsgId)
               callbacks.scrollToBottom()
             } else if (parsed.type === 'shader') {
               shaderCode = parsed.code
-              updateLastMessage({ shaderCode })
+              updateLastMessage({ shaderCode }, assistantMsgId)
             }
           } catch (e) {}
         }
@@ -412,7 +449,7 @@ export function useChat(conversationId?: Ref<string | null>) {
         content: fullContent,
         reasoning: fullReasoning || undefined,
         shaderCode
-      })
+      }, assistantMsgId)
 
       if (shaderCode) {
         callbacks.onShaderCode(shaderCode)
@@ -425,7 +462,7 @@ export function useChat(conversationId?: Ref<string | null>) {
         updateLastMessage({
           content: `[工具执行后续失败: ${error.message}]`,
           isStreaming: false
-        })
+        }, assistantMsgId)
         saveMessages()
       }
     } finally {

@@ -1,4 +1,6 @@
 import { defineEventHandler, readBody } from 'h3'
+import { getDb } from '../utils/db'
+import { logInfo, logError } from '../utils/logger'
 
 // 工具定义
 const TOOLS = [
@@ -33,6 +35,85 @@ const TOOLS = [
           }
         },
         required: ['reason']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_code_range',
+      description: '获取代码特定行范围的内容，用于查看大文件的特定部分。代码总行数可通过 get_current_code 获取',
+      parameters: {
+        type: 'object',
+        properties: {
+          start_line: {
+            type: 'integer',
+            description: '开始行号（从1开始）'
+          },
+          end_line: {
+            type: 'integer',
+            description: '结束行号（包含）'
+          },
+          reason: {
+            type: 'string',
+            description: '为什么需要查看这段代码'
+          }
+        },
+        required: ['start_line', 'end_line', 'reason']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'modify_code_range',
+      description: '修改代码中特定行范围的内容。只在你确定需要修改的具体行时使用，避免输出整个着色器',
+      parameters: {
+        type: 'object',
+        properties: {
+          start_line: {
+            type: 'integer',
+            description: '开始行号（从1开始）'
+          },
+          end_line: {
+            type: 'integer',
+            description: '结束行号（包含）'
+          },
+          new_code: {
+            type: 'string',
+            description: '新的代码内容，将替换指定行范围的内容'
+          },
+          reason: {
+            type: 'string',
+            description: '为什么需要修改这段代码'
+          }
+        },
+        required: ['start_line', 'end_line', 'new_code', 'reason']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'insert_code',
+      description: '在指定行号后插入新代码。用于添加新功能而不修改现有代码',
+      parameters: {
+        type: 'object',
+        properties: {
+          line_number: {
+            type: 'integer',
+            description: '插入位置的行号（新代码将插入在该行之后，从1开始）'
+          },
+          new_code: {
+            type: 'string',
+            description: '要插入的新代码'
+          },
+          reason: {
+            type: 'string',
+            description: '为什么需要插入这段代码'
+          }
+        },
+        required: ['line_number', 'new_code', 'reason']
       }
     }
   }
@@ -98,23 +179,17 @@ const VISION_MODELS = [
   'kimi-k2.5'
 ]
 
-// 支持 tool use 的模型
-const TOOL_MODELS = [
-  'kimi-k2',
-  'kimi-k2.5',
-  'moonshot-v1-8k',
-  'moonshot-v1-32k',
-  'moonshot-v1-128k'
-]
+// 工具已对所有模型开放
+const TOOL_MODELS: string[] = []
 
 // 检查模型是否支持图片
 function supportsVision(model: string): boolean {
   return VISION_MODELS.some(m => model.toLowerCase().includes(m.toLowerCase()))
 }
 
-// 检查模型是否支持 tool use
-function supportsTools(model: string): boolean {
-  return TOOL_MODELS.some(m => model.toLowerCase().includes(m.toLowerCase()))
+// 检查模型是否支持 tool use（已取消限制）
+function supportsTools(_model: string): boolean {
+  return true
 }
 
 // 估计token数量
@@ -136,31 +211,38 @@ function truncateContext(messages: any[]): any[] {
   const hasImage = messages.some(m => m.image)
   const maxTokens = hasImage ? 2000 : MAX_CONTEXT_TOKENS
   const maxMessages = hasImage ? 6 : MAX_CONTEXT_MESSAGES
-  
+
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     const tokens = estimateTokens(msg.content || '', msg.image)
-    
+
     if (totalTokens + tokens > maxTokens || result.length >= maxMessages) {
       break
     }
-    
+
     result.unshift(msg)
     totalTokens += tokens
   }
-  
+
   return result
 }
 
 export default defineEventHandler(async (event) => {
   try {
     const body = await readBody(event)
-    const { messages, settings, stream = false, toolResults = [], enableTools: requestEnableTools = false, systemPrompt } = body
-    
+    const { messages, settings, stream = false, toolResults = [], enableTools: requestEnableTools = false, systemPrompt, conversationId: bodyConvId } = body
+
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return { error: '请提供消息列表' }
     }
-    
+
+    // 持久化对话和消息
+    const convId = bodyConvId ? ensureConversation(bodyConvId, messages) : undefined
+    if (convId) {
+      persistMessages(convId, messages)
+      logInfo('api/chat', 'Request persisted', { conversationId: convId, msgCount: messages.length })
+    }
+
     // 如果有工具执行结果，添加到消息中
     if (toolResults.length > 0) {
       const toolResultContent = formatToolResultsForAI(toolResults)
@@ -168,56 +250,98 @@ export default defineEventHandler(async (event) => {
         role: 'tool',
         content: toolResultContent
       })
+      if (convId) persistMessages(convId, messages)
     }
-    
+
     // 检查最后一条消息是否包含图片
     const lastMessage = messages[messages.length - 1]
     const hasImage = lastMessage?.image || lastMessage?.content?.includes('data:image')
-    
+
     // 截断过长的上下文
     const truncatedMessages = truncateContext(messages)
-    
+
     // 内置模式
     if (!settings || settings.provider === 'builtin') {
-      return await handleBuiltinMode(truncatedMessages, hasImage, stream, event)
+      const result = await handleBuiltinMode(truncatedMessages, hasImage, stream, event, convId)
+      if (!stream && convId && result && typeof result === 'object') {
+        persistMessages(convId, [{
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+          role: 'assistant',
+          content: result.content || '',
+          shaderCode: result.shaderCode || null,
+          reasoning: result.reasoning || null,
+          timestamp: Date.now(),
+          rawResponse: JSON.stringify(result)
+        }])
+      }
+      return result
     }
-    
+
     // 验证设置
     if (!settings.token) {
       throw createError({ statusCode: 400, message: '请先配置 API Token' })
     }
-    
+
     if (settings.provider === 'moonshot' && !settings.token.trim().startsWith('sk-')) {
       throw createError({ statusCode: 400, message: 'Moonshot API Token 应以 sk- 开头' })
     }
-    
+
     // 如果包含图片但模型不支持，给出提示
     if (hasImage && !supportsVision(settings.model)) {
       const messagesWithoutImage = truncatedMessages.map(m => ({
         ...m,
         image: undefined
       }))
-      
+
       if (stream) {
         return createWarningStream('当前模型不支持图片，将只根据文字描述回复。如需视觉反馈，请使用支持多模态的模型（如 GPT-4o、Claude 3、Kimi K2 等）。', event)
       }
-      
-      return await handleNormalResponse(messagesWithoutImage, settings, false,
+
+      const result = await handleNormalResponse(messagesWithoutImage, settings, false,
         '（用户发送了一张渲染截图，但当前模型不支持图片识别。以下是基于文字描述的回复。）')
+      if (convId) {
+        persistMessages(convId, [{
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+          role: 'assistant',
+          content: result.content || '',
+          shaderCode: result.shaderCode || null,
+          toolCalls: result.toolCalls ? JSON.stringify(result.toolCalls) : null,
+          timestamp: Date.now(),
+          rawResponse: JSON.stringify(result)
+        }])
+      }
+      return result
     }
-    
+
     // 判断是否需要启用工具（优先使用请求中的设置）
-    const enableTools = requestEnableTools && supportsTools(settings.model) && settings.provider === 'moonshot'
+    const enableTools = requestEnableTools && supportsTools(settings.model)
 
     // 流式或非流式处理
     if (stream) {
-      return await handleStreamResponse(truncatedMessages, settings, enableTools, event)
+      let assistantMsgId: string | undefined
+      if (convId) {
+        assistantMsgId = Date.now().toString(36) + Math.random().toString(36).slice(2)
+        persistMessages(convId, [{ id: assistantMsgId, role: 'assistant', content: '', timestamp: Date.now() }])
+      }
+      return await handleStreamResponse(truncatedMessages, settings, enableTools, event, convId, assistantMsgId)
     } else {
-      return await handleNormalResponse(truncatedMessages, settings, enableTools, systemPrompt)
+      const result = await handleNormalResponse(truncatedMessages, settings, enableTools, systemPrompt)
+      if (convId) {
+        persistMessages(convId, [{
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+          role: 'assistant',
+          content: result.content || '',
+          shaderCode: result.shaderCode || null,
+          toolCalls: result.toolCalls ? JSON.stringify(result.toolCalls) : null,
+          timestamp: Date.now(),
+          rawResponse: JSON.stringify(result)
+        }])
+      }
+      return result
     }
-    
+
   } catch (error: any) {
-    console.error('聊天错误:', error)
+    logError('api/chat', error.message || '处理失败', { stack: error.stack })
     throw createError({ statusCode: 500, message: error.message || '处理失败' })
   }
 })
@@ -229,6 +353,15 @@ function formatToolResultsForAI(results: any[]): string {
       return `[截图已捕获] ${r.result || '成功'}`
     } else if (r.name === 'get_current_code') {
       return `[当前代码]\n\`\`\`glsl\n${r.result || '无法获取代码'}\n\`\`\``
+    } else if (r.name === 'get_code_range') {
+      const rangeInfo = r.arguments ? `(第 ${JSON.parse(r.arguments).start_line} 到 ${JSON.parse(r.arguments).end_line} 行)` : ''
+      return `[代码片段 ${rangeInfo}]\n\`\`\`glsl\n${r.result || '无法获取代码片段'}\n\`\`\``
+    } else if (r.name === 'modify_code_range') {
+      const args = r.arguments ? JSON.parse(r.arguments) : {}
+      return `[代码修改成功] 第 ${args.start_line} 到 ${args.end_line} 行已替换为新代码`
+    } else if (r.name === 'insert_code') {
+      const args = r.arguments ? JSON.parse(r.arguments) : {}
+      return `[代码插入成功] 在第 ${args.line_number} 行后插入了新代码`
     }
     return `[工具执行: ${r.name}] ${r.result || r.error || ''}`
   }).join('\n\n')
@@ -239,9 +372,9 @@ function createWarningStream(warning: string, event: any) {
   event.node.res.setHeader('Content-Type', 'text/event-stream')
   event.node.res.setHeader('Cache-Control', 'no-cache')
   event.node.res.setHeader('Connection', 'keep-alive')
-  
+
   const encoder = new TextEncoder()
-  
+
   return new ReadableStream({
     async start(controller) {
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', content: `⚠️ ${warning}\n\n` })}\n\n`))
@@ -253,51 +386,51 @@ function createWarningStream(warning: string, event: any) {
 }
 
 // 内置模板模式
-async function handleBuiltinMode(messages: any[], hasImage: boolean, stream: boolean, event: any) {
+async function handleBuiltinMode(messages: any[], hasImage: boolean, stream: boolean, event: any, convId?: string) {
   const lastMessage = messages[messages.length - 1]
   const prompt = lastMessage?.content || ''
-  
+
   const thoughts = [
     '理解用户需求中...',
     hasImage ? '注意到用户附带了渲染截图...' : '分析关键词：' + prompt.slice(0, 20) + '...',
     '匹配合适的着色器效果...',
     '生成代码中...'
   ]
-  
+
   const { findBestTemplate, getTemplateDescription } = await import('./templates')
-  
+
   // 检查是否是技术问题
-  const isQuestion = prompt.includes('?') || prompt.includes('？') || 
+  const isQuestion = prompt.includes('?') || prompt.includes('？') ||
                      prompt.includes('怎么') || prompt.includes('为什么') ||
                      prompt.includes('如何') || prompt.includes('是什么')
-  
+
   if (isQuestion && !prompt.match(/(彩虹|波浪|熔岩|星空|火焰|水|霓虹|shader|效果)/i)) {
-    const answer = hasImage 
+    const answer = hasImage
       ? `我看到你分享了一张截图！📸\n\n作为内置助手，我目前还不能分析图片内容。但如果你描述一下想要的效果或遇到的问题，我很乐意帮你生成新的着色器代码或解释现有代码。`
       : `你好！我是你的着色器助手。🎨\n\n我可以帮你：\n• 生成各种视觉效果的 GLSL 着色器代码\n• 解释着色器的工作原理\n• 调试和优化现有代码\n• 回答 WebGL/GLSL 相关问题\n\n试着描述你想要的效果，比如："创建一个彩虹波浪效果" 或 "我想做一个星空动画"。\n\n有什么我可以帮你的吗？`
-    
+
     if (stream) {
-      return createMockStream(thoughts, answer, null, event)
+      return createMockStream(thoughts, answer, null, event, convId)
     }
-    
+
     return { content: answer, shaderCode: null, reasoning: thoughts.join('\n'), model: '内置助手' }
   }
-  
+
   // 生成着色器模式
   const shaderCode = findBestTemplate(prompt)
   const description = getTemplateDescription(prompt)
-  
+
   let response
   if (hasImage) {
     response = `收到你的反馈！我为你重新生成了一个${description}效果。你可以在右侧预览窗口看到新效果。\n\n（注：内置模式无法分析图片内容，建议切换到支持多模态的 AI 模型以获得更准确的视觉反馈）`
   } else {
     response = `好的！我为你生成了一个${description}效果。你可以在右侧预览窗口看到实时效果。\n\n这个着色器使用了噪声函数和正弦波来创建动态效果。如果你想要调整颜色或动画速度，随时告诉我！`
   }
-  
+
   if (stream) {
-    return createMockStream(thoughts, response, shaderCode, event)
+    return createMockStream(thoughts, response, shaderCode, event, convId)
   }
-  
+
   return {
     content: response,
     shaderCode,
@@ -307,45 +440,64 @@ async function handleBuiltinMode(messages: any[], hasImage: boolean, stream: boo
 }
 
 // 创建模拟流
-function createMockStream(thoughts: string[], content: string, shaderCode: string | null, event: any) {
+function createMockStream(thoughts: string[], content: string, shaderCode: string | null, event: any, convId?: string) {
   event.node.res.setHeader('Content-Type', 'text/event-stream')
   event.node.res.setHeader('Cache-Control', 'no-cache')
   event.node.res.setHeader('Connection', 'keep-alive')
-  
+
   const encoder = new TextEncoder()
-  
+  const rawLines: string[] = []
+
   const stream = new ReadableStream({
     async start(controller) {
       for (const thought of thoughts) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'reasoning', content: thought + '\n' })}\n\n`))
+        const line = `data: ${JSON.stringify({ type: 'reasoning', content: thought + '\n' })}\n\n`
+        rawLines.push(line)
+        controller.enqueue(encoder.encode(line))
         await new Promise(r => setTimeout(r, 200))
       }
-      
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'reasoning_end' })}\n\n`))
-      
+
+      rawLines.push(`data: ${JSON.stringify({ type: 'reasoning_end' })}\n\n`)
+      controller.enqueue(encoder.encode(rawLines[rawLines.length - 1]))
+
       for (const char of content) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', content: char })}\n\n`))
+        const line = `data: ${JSON.stringify({ type: 'content', content: char })}\n\n`
+        rawLines.push(line)
+        controller.enqueue(encoder.encode(line))
         await new Promise(r => setTimeout(r, 30))
       }
-      
+
       if (shaderCode) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'shader', code: shaderCode })}\n\n`))
+        const line = `data: ${JSON.stringify({ type: 'shader', code: shaderCode })}\n\n`
+        rawLines.push(line)
+        controller.enqueue(encoder.encode(line))
       }
-      
+
       controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+      if (convId) {
+        persistMessages(convId, [{
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+          role: 'assistant',
+          content,
+          shaderCode,
+          reasoning: thoughts.join('\n'),
+          timestamp: Date.now(),
+          rawResponse: rawLines.join('')
+        }])
+      }
       controller.close()
     }
   })
-  
+
   return stream
 }
 
 // 流式响应
-async function handleStreamResponse(messages: any[], settings: any, enableTools: boolean, event: any) {
+async function handleStreamResponse(messages: any[], settings: any, enableTools: boolean, event: any, convId?: string, assistantMsgId?: string) {
   const apiUrl = settings.customUrl || getDefaultApiUrl(settings.provider)
-  
+
   const requestBody = prepareRequestBody(messages, settings, enableTools)
-  
+
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: prepareHeaders(settings),
@@ -354,62 +506,97 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
       stream: true
     })
   })
-  
+
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`API 错误: ${error}`)
   }
-  
+
   event.node.res.setHeader('Content-Type', 'text/event-stream')
   event.node.res.setHeader('Cache-Control', 'no-cache')
   event.node.res.setHeader('Connection', 'keep-alive')
-  
+
   const reader = response.body?.getReader()
   if (!reader) throw new Error('无法读取响应')
-  
+
   const encoder = new TextEncoder()
   let buffer = ''
   let fullContent = ''
   let inShaderBlock = false
   let shaderBuffer = ''
   let toolCalls: any[] = []
-  
+  const rawLines: string[] = []
+
   return new ReadableStream({
     async start(controller) {
       try {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-          
+
           buffer += new TextDecoder().decode(value)
           const lines = buffer.split('\n')
           buffer = lines.pop() || ''
-          
+
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue
-            
+
+            rawLines.push(line)
             const data = line.slice(6)
             if (data === '[DONE]') {
               // 检查是否有工具调用
               if (toolCalls.length > 0) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'tool_calls', calls: toolCalls })}\n\n`))
+                // 验证并修复工具调用的参数
+                const validatedToolCalls = toolCalls.map(tc => {
+                  // 确保 arguments 是有效的 JSON 字符串
+                  if (!tc.arguments) {
+                    tc.arguments = '{}'
+                  } else {
+                    try {
+                      JSON.parse(tc.arguments)
+                    } catch (e) {
+                      // 尝试修复无效的 JSON
+                      try {
+                        const fixed = tc.arguments.trim()
+                        JSON.parse(fixed)
+                        tc.arguments = fixed
+                      } catch (e2) {
+                        // 如果无法修复，使用空对象
+                        tc.arguments = '{}'
+                      }
+                    }
+                  }
+                  return tc
+                })
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'tool_calls', calls: validatedToolCalls })}\n\n`))
               }
-              
+
               // 尝试从 Markdown 代码块提取代码（支持 glsl/shader 语言标记）
-              const shaderMatch = fullContent.match(/```(?:glsl|shader)\n?([\s\S]*?)```/) || 
+              const shaderMatch = fullContent.match(/```(?:glsl|shader)\n?([\s\S]*?)```/) ||
                                  fullContent.match(/<shader>([\s\S]*?)<\/shader>/)
 
-              if (shaderMatch && shaderMatch[1]) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'shader', code: shaderMatch[1].trim() })}\n\n`))
+              const extractedShader = shaderMatch?.[1] ? shaderMatch[1].trim() : null
+              if (extractedShader) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'shader', code: extractedShader })}\n\n`))
               }
+
               controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+              if (convId && assistantMsgId) {
+                updateAssistantMessage(convId, assistantMsgId, {
+                  content: fullContent,
+                  reasoning: '',
+                  shaderCode: extractedShader,
+                  rawResponse: rawLines.join('\n')
+                })
+                logInfo('api/chat', 'Stream persisted', { conversationId: convId, assistantMsgId })
+              }
               controller.close()
               return
             }
-            
+
             try {
               const parsed = JSON.parse(data)
-              
+
               // 检查是否有工具调用 (Kimi format)
               if (parsed.choices?.[0]?.delta?.tool_calls) {
                 const deltaToolCalls = parsed.choices[0].delta.tool_calls
@@ -418,7 +605,7 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
                     toolCalls.push({
                       id: tc.id,
                       name: tc.function.name,
-                      arguments: tc.function.arguments || '{}'
+                      arguments: tc.function.arguments || ''
                     })
                   } else if (tc.function?.arguments && toolCalls.length > 0) {
                     // 追加参数
@@ -427,19 +614,19 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
                 }
                 continue
               }
-              
+
               let content = ''
-              
+
               if (settings.provider === 'anthropic') {
                 content = parsed.delta?.text || parsed.content_block?.text || ''
               } else {
                 content = parsed.choices?.[0]?.delta?.content || ''
               }
-              
+
               if (!content) continue
-              
+
               fullContent += content
-              
+
               // 检测代码块开始 ```glsl 或 ```shader
               const codeBlockStart = content.match(/```(?:glsl|shader)/)
               if (codeBlockStart) {
@@ -451,7 +638,7 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
                 shaderBuffer = ''
                 continue
               }
-              
+
               // 检测代码块结束 ```
               if (inShaderBlock && content.includes('```')) {
                 inShaderBlock = false
@@ -464,18 +651,34 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
                 shaderBuffer = ''
                 continue
               }
-              
+
               if (inShaderBlock) {
                 shaderBuffer += content
               } else {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', content })}\n\n`))
               }
-              
+
             } catch (e) {}
           }
         }
+        if (convId && assistantMsgId) {
+          updateAssistantMessage(convId, assistantMsgId, {
+            content: fullContent,
+            reasoning: '',
+            shaderCode: null,
+            rawResponse: rawLines.join('\n')
+          })
+        }
         controller.close()
       } catch (error) {
+        if (convId && assistantMsgId) {
+          updateAssistantMessage(convId, assistantMsgId, {
+            content: fullContent,
+            reasoning: '',
+            shaderCode: null,
+            rawResponse: rawLines.join('\n')
+          })
+        }
         controller.error(error)
       }
     }
@@ -483,10 +686,10 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
 }
 
 // 普通响应
-async function handleNormalResponse(messages: any[], settings: any, enableTools: boolean, systemPrompt?: string) {
+async function handleNormalResponse(messages: any[], settings: any, enableTools: boolean, customSystemPrompt?: string) {
   const apiUrl = settings.customUrl || getDefaultApiUrl(settings.provider)
 
-  const requestBody = prepareRequestBody(messages, settings, enableTools, systemPrompt)
+  const requestBody = prepareRequestBody(messages, settings, enableTools, customSystemPrompt)
 
   const response = await fetch(apiUrl, {
     method: 'POST',
@@ -504,11 +707,30 @@ async function handleNormalResponse(messages: any[], settings: any, enableTools:
 
   // 检查是否有工具调用 (Kimi format)
   if (data.choices?.[0]?.message?.tool_calls) {
-    toolCalls = data.choices[0].message.tool_calls.map((tc: any) => ({
-      id: tc.id,
-      name: tc.function.name,
-      arguments: tc.function.arguments
-    }))
+    toolCalls = data.choices[0].message.tool_calls.map((tc: any) => {
+      let args = tc.function.arguments
+      // 验证并修复参数
+      if (!args) {
+        args = '{}'
+      } else {
+        try {
+          JSON.parse(args)
+        } catch (e) {
+          try {
+            const fixed = args.trim()
+            JSON.parse(fixed)
+            args = fixed
+          } catch (e2) {
+            args = '{}'
+          }
+        }
+      }
+      return {
+        id: tc.id,
+        name: tc.function.name,
+        arguments: args
+      }
+    })
   }
 
   if (settings.provider === 'anthropic') {
@@ -532,14 +754,15 @@ async function handleNormalResponse(messages: any[], settings: any, enableTools:
     content: cleanContent,
     shaderCode,
     toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-    model: data.model || settings.model
+    model: data.model || settings.model,
+    _raw: data // 内部字段，主 handler 会用来提取 rawResponse
   }
 }
 
 // 准备请求头
 function prepareHeaders(settings: any): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  
+
   switch (settings.provider) {
     case 'openai':
     case 'moonshot':
@@ -551,7 +774,7 @@ function prepareHeaders(settings: any): Record<string, string> {
       headers['anthropic-version'] = '2023-06-01'
       break
   }
-  
+
   return headers
 }
 
@@ -565,8 +788,8 @@ function prepareRequestBody(messages: any[], settings: any, enableTools: boolean
         role: m.role,
         content: [
           { type: 'text', text: m.content || '' },
-          { 
-            type: 'image_url', 
+          {
+            type: 'image_url',
             image_url: { url: m.image }
           }
         ]
@@ -574,23 +797,23 @@ function prepareRequestBody(messages: any[], settings: any, enableTools: boolean
     }
     return { role: m.role, content: m.content || '' }
   })
-  
+
   const body: any = {
     model: settings.model,
     messages: [{ role: 'system', content: systemPrompt }, ...msgs],
     max_tokens: settings.maxTokens || 2048
   }
-  
+
   // 只有非固定 temperature 模型才添加 temperature 参数
   if (!isFixedTemperatureModel(settings.model)) {
     body.temperature = settings.temperature ?? 0.7
   }
-  
-  // 添加工具支持（仅 Kimi）
-  if (enableTools && settings.provider === 'moonshot') {
+
+  // 添加工具支持
+  if (enableTools) {
     body.tools = TOOLS
   }
-  
+
   return body
 }
 
@@ -609,4 +832,58 @@ function getDefaultApiUrl(provider: string): string {
     'local': 'http://localhost:11434/v1/chat/completions'
   }
   return urls[provider] || ''
+}
+
+// ==================== Database Helpers ====================
+
+function ensureConversation(conversationId: string, messages: any[]): string {
+  const db = getDb()
+  const existing = db.prepare('SELECT id FROM conversations WHERE id = ?').get(conversationId)
+  if (!existing) {
+    const firstUser = messages.find((m: any) => m.role === 'user')
+    const title = firstUser ? (firstUser.content || '').slice(0, 30) : '新对话'
+    const now = Date.now()
+    db.prepare('INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)')
+      .run(conversationId, title, now, now)
+  }
+  return conversationId
+}
+
+function persistMessages(conversationId: string, messages: any[]) {
+  const db = getDb()
+  const stmt = db.prepare(
+    `INSERT OR REPLACE INTO messages (id, conversation_id, role, content, image, reasoning, shader_code, tool_calls, raw_response, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const m of messages) {
+    const msgId = String(m.id || Date.now() + Math.random())
+    stmt.run(
+      msgId,
+      conversationId,
+      m.role,
+      m.content || '',
+      m.image || null,
+      m.reasoning || null,
+      m.shaderCode || null,
+      m.toolCalls ? (typeof m.toolCalls === 'string' ? m.toolCalls : JSON.stringify(m.toolCalls)) : null,
+      m.rawResponse || null,
+      m.timestamp || Date.now()
+    )
+  }
+  db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(Date.now(), conversationId)
+}
+
+function updateAssistantMessage(conversationId: string, msgId: string, data: any) {
+  const db = getDb()
+  db.prepare(
+    `UPDATE messages SET content = ?, reasoning = ?, shader_code = ?, raw_response = ? WHERE id = ? AND conversation_id = ?`
+  ).run(
+    data.content ?? '',
+    data.reasoning ?? null,
+    data.shaderCode ?? null,
+    data.rawResponse ?? null,
+    msgId,
+    conversationId
+  )
+  db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(Date.now(), conversationId)
 }

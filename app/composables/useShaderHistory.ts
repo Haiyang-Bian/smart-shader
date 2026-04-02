@@ -3,6 +3,7 @@ import type { ShaderHistoryItem } from '~/types'
 const MAX_HISTORY_ITEMS = 50
 
 export function useShaderHistory() {
+  const { confirm } = useConfirmDialog()
   const history = ref<ShaderHistoryItem[]>([])
   const currentIndex = ref(-1)
 
@@ -92,8 +93,15 @@ export function useShaderHistory() {
   })
 
   // 清空历史
-  function clearHistory() {
-    if (confirm('确定要清空所有历史版本吗？')) {
+  async function clearHistory() {
+    const confirmed = await confirm({
+      title: '清空历史版本',
+      message: '确定要清空所有历史版本吗？',
+      confirmText: '清空',
+      cancelText: '取消',
+      type: 'danger'
+    })
+    if (confirmed) {
       history.value = []
       currentIndex.value = -1
       localStorage.removeItem('shader-history')

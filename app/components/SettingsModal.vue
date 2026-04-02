@@ -21,6 +21,7 @@
         <div class="model-select-wrapper">
           <select v-model="settings.model" :disabled="fetchingModels">
             <option v-if="fetchingModels" value="">加载中...</option>
+            <option v-else-if="availableModels.length === 0" value="">请输入 API Token 后自动获取模型</option>
             <option v-for="m in availableModels" :key="m.id" :value="m.id">
               {{ m.name }}{{ m.description ? ` - ${m.description}` : '' }}
             </option>

@@ -3,7 +3,7 @@ import { defineEventHandler, getQuery } from 'h3'
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const { provider, token, customUrl } = query
-  
+
   if (!provider || provider === 'builtin') {
     return {
       models: [
@@ -11,13 +11,13 @@ export default defineEventHandler(async (event) => {
       ]
     }
   }
-  
+
   if (!token) {
     return {
       error: 'API token is required'
     }
   }
-  
+
   try {
     const models = await fetchModels(provider as string, token as string, customUrl as string)
     return { models }
@@ -30,10 +30,14 @@ export default defineEventHandler(async (event) => {
 
 async function fetchModels(provider: string, token: string, customUrl?: string): Promise<any[]> {
   const apiUrl = customUrl || getDefaultApiUrl(provider)
-  
+
   switch (provider) {
     case 'openai':
       return await fetchOpenAIModels(apiUrl, token)
+    case 'anthropic':
+      return await fetchAnthropicModels(apiUrl, token)
+    case 'google':
+      return await fetchGoogleModels(apiUrl, token)
     case 'moonshot':
       return await fetchMoonshotModels(apiUrl, token)
     case 'openrouter':
@@ -41,14 +45,15 @@ async function fetchModels(provider: string, token: string, customUrl?: string):
     case 'local':
       return await fetchLocalModels(apiUrl)
     default:
-      // 对于其他提供商，返回预设列表
-      return getDefaultModels(provider)
+      return []
   }
 }
 
 function getDefaultApiUrl(provider: string): string {
   const urls: Record<string, string> = {
     'openai': 'https://api.openai.com/v1/models',
+    'anthropic': 'https://api.anthropic.com/v1/models',
+    'google': 'https://generativelanguage.googleapis.com/v1beta/models',
     'moonshot': 'https://api.moonshot.cn/v1/models',
     'openrouter': 'https://openrouter.ai/api/v1/models',
     'local': 'http://localhost:11434/api/tags'
@@ -60,9 +65,9 @@ async function fetchOpenAIModels(url: string, token: string) {
   const response = await fetch(url, {
     headers: { 'Authorization': `Bearer ${token}` }
   })
-  
+
   if (!response.ok) throw new Error('Failed to fetch OpenAI models')
-  
+
   const data = await response.json()
   return data.data
     .filter((m: any) => m.id.includes('gpt'))
@@ -73,21 +78,52 @@ async function fetchOpenAIModels(url: string, token: string) {
     }))
 }
 
+async function fetchAnthropicModels(url: string, token: string) {
+  const response = await fetch(url, {
+    headers: {
+      'x-api-key': token,
+      'anthropic-version': '2023-06-01'
+    }
+  })
+
+  if (!response.ok) throw new Error('Failed to fetch Anthropic models')
+
+  const data = await response.json()
+  return data.data.map((m: any) => ({
+    id: m.id,
+    name: m.display_name || m.id,
+    description: ''
+  }))
+}
+
+async function fetchGoogleModels(url: string, token: string) {
+  const response = await fetch(`${url}?key=${token}`)
+
+  if (!response.ok) throw new Error('Failed to fetch Google models')
+
+  const data = await response.json()
+  return data.models.map((m: any) => ({
+    id: m.name.replace(/^models\//, ''),
+    name: m.displayName || m.name,
+    description: m.description || ''
+  }))
+}
+
 async function fetchMoonshotModels(url: string, token: string) {
   const response = await fetch(url, {
     headers: { 'Authorization': `Bearer ${token.trim()}` }
   })
-  
+
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`Failed to fetch Moonshot models: ${error}`)
   }
-  
+
   const data = await response.json()
-  
+
   // 标注哪些模型只支持 temperature=1
   const fixedTempModels = ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k']
-  
+
   return data.data.map((m: any) => ({
     id: m.id,
     name: m.id,
@@ -99,9 +135,9 @@ async function fetchOpenRouterModels(url: string, token: string) {
   const response = await fetch(url, {
     headers: { 'Authorization': `Bearer ${token}` }
   })
-  
+
   if (!response.ok) throw new Error('Failed to fetch OpenRouter models')
-  
+
   const data = await response.json()
   return data.data.map((m: any) => ({
     id: m.id,
@@ -112,29 +148,13 @@ async function fetchOpenRouterModels(url: string, token: string) {
 
 async function fetchLocalModels(url: string) {
   const response = await fetch(url)
-  
+
   if (!response.ok) throw new Error('Failed to fetch local models')
-  
+
   const data = await response.json()
   return data.models.map((m: any) => ({
     id: m.name,
     name: m.name,
     description: m.details?.description || ''
   }))
-}
-
-function getDefaultModels(provider: string): any[] {
-  const defaults: Record<string, any[]> = {
-    'anthropic': [
-      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', description: '' },
-      { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', description: '' },
-      { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', description: '' }
-    ],
-    'google': [
-      { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: '' },
-      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: '' }
-    ]
-  }
-  
-  return defaults[provider] || []
 }

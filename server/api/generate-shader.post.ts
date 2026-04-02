@@ -1,5 +1,7 @@
 import { defineEventHandler, readBody } from 'h3'
 import { findBestTemplate, getTemplateDescription } from './templates'
+import { getDb } from '../utils/db'
+import { logInfo, logError } from '../utils/logger'
 
 // 中文系统提示词
 function getSystemPrompt(): string {
@@ -29,29 +31,29 @@ void main() {
 }
 
 // 使用 AI 生成着色器
-async function generateWithAI(prompt: string, settings: any): Promise<{ code: string; model: string }> {
+async function generateWithAI(prompt: string, settings: any): Promise<{ code: string; model: string; rawData: string }> {
   const systemPrompt = getSystemPrompt()
   const apiUrl = settings.customUrl || getDefaultApiUrl(settings.provider)
-  
+
   switch (settings.provider) {
     case 'openai':
       return await callOpenAI(apiUrl, settings.token, settings.model, systemPrompt, prompt, settings.temperature)
-    
+
     case 'anthropic':
       return await callAnthropic(apiUrl, settings.token, settings.model, systemPrompt, prompt)
-    
+
     case 'google':
       return await callGoogle(apiUrl, settings.token, settings.model, systemPrompt, prompt, settings.temperature)
-    
+
     case 'moonshot':
       return await callMoonshot(apiUrl, settings.token, settings.model, systemPrompt, prompt, settings.temperature)
-    
+
     case 'openrouter':
       return await callOpenRouter(apiUrl, settings.token, settings.model, systemPrompt, prompt, settings.temperature)
-    
+
     case 'local':
       return await callLocal(apiUrl, settings.model, systemPrompt, prompt, settings.temperature)
-    
+
     default:
       throw new Error(`不支持的提供商: ${settings.provider}`)
   }
@@ -86,16 +88,17 @@ async function callOpenAI(url: string, token: string, model: string, systemPromp
       max_tokens: 2048
     })
   })
-  
+
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`OpenAI API 错误: ${error}`)
   }
-  
+
   const data = await response.json()
   return {
     code: extractShaderCode(data.choices[0].message.content),
-    model: data.model || model
+    model: data.model || model,
+    rawData: JSON.stringify(data)
   }
 }
 
@@ -117,16 +120,17 @@ async function callAnthropic(url: string, token: string, model: string, systemPr
       ]
     })
   })
-  
+
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`Anthropic API 错误: ${error}`)
   }
-  
+
   const data = await response.json()
   return {
     code: extractShaderCode(data.content[0].text),
-    model: data.model || model
+    model: data.model || model,
+    rawData: JSON.stringify(data)
   }
 }
 
@@ -150,16 +154,17 @@ async function callGoogle(url: string, token: string, model: string, systemPromp
       }
     })
   })
-  
+
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`Google API 错误: ${error}`)
   }
-  
+
   const data = await response.json()
   return {
     code: extractShaderCode(data.candidates[0].content.parts[0].text),
-    model: model
+    model: model,
+    rawData: JSON.stringify(data)
   }
 }
 
@@ -173,9 +178,9 @@ function isFixedTemperatureModel(model: string): boolean {
 async function callMoonshot(url: string, token: string, model: string, systemPrompt: string, userPrompt: string, temperature: number) {
   const cleanToken = token.trim()
   const fixedTemp = isFixedTemperatureModel(model)
-  
+
   console.log('Moonshot API 调用:', { model, fixedTemp })
-  
+
   const requestBody: any = {
     model: model,
     messages: [
@@ -184,12 +189,12 @@ async function callMoonshot(url: string, token: string, model: string, systemPro
     ],
     max_tokens: 2048
   }
-  
+
   // 如果模型支持 temperature，则添加
   if (!fixedTemp) {
     requestBody.temperature = temperature
   }
-  
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -198,33 +203,34 @@ async function callMoonshot(url: string, token: string, model: string, systemPro
     },
     body: JSON.stringify(requestBody)
   })
-  
+
   if (!response.ok) {
     const errorText = await response.text()
     console.error('Moonshot API 错误:', response.status, errorText)
-    
+
     let errorMsg = errorText
     try {
       const errorJson = JSON.parse(errorText)
       errorMsg = errorJson.error?.message || errorJson.message || errorText
     } catch {}
-    
+
     if (response.status === 401) {
       throw new Error(`API Token 无效。请检查：1. Token 是否以 sk- 开头 2. Token 是否已过期`)
     }
-    
+
     throw new Error(`API 错误: ${errorMsg}`)
   }
-  
+
   const data = await response.json()
-  
+
   if (!data.choices || !data.choices[0] || !data.choices[0].message) {
     throw new Error('API 返回数据无效')
   }
-  
+
   return {
     code: extractShaderCode(data.choices[0].message.content),
-    model: data.model || model
+    model: data.model || model,
+    rawData: JSON.stringify(data)
   }
 }
 
@@ -247,16 +253,17 @@ async function callOpenRouter(url: string, token: string, model: string, systemP
       max_tokens: 2048
     })
   })
-  
+
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`OpenRouter API 错误: ${error}`)
   }
-  
+
   const data = await response.json()
   return {
     code: extractShaderCode(data.choices[0].message.content),
-    model: data.model || model
+    model: data.model || model,
+    rawData: JSON.stringify(data)
   }
 }
 
@@ -276,16 +283,17 @@ async function callLocal(url: string, model: string, systemPrompt: string, userP
       stream: false
     })
   })
-  
+
   if (!response.ok) {
     const error = await response.text()
     throw new Error(`本地 API 错误: ${error}`)
   }
-  
+
   const data = await response.json()
   return {
     code: extractShaderCode(data.choices[0].message.content),
-    model: model
+    model: data.model || model,
+    rawData: JSON.stringify(data)
   }
 }
 
@@ -298,60 +306,78 @@ function extractShaderCode(content: string): string {
 }
 
 export default defineEventHandler(async (event) => {
+  let reqSettings: any = null
   try {
     const body = await readBody(event)
     const { prompt, settings } = body
-    
+    reqSettings = settings
+
     if (!prompt) {
-      return {
-        error: '请输入描述'
-      }
+      return { error: '请输入描述' }
     }
-    
+
+    logInfo('api/generate-shader', 'Request received', { prompt, provider: settings?.provider || 'builtin' })
+
     // 使用内置模板
     if (!settings || settings.provider === 'builtin') {
       await new Promise(resolve => setTimeout(resolve, 500))
       const shaderCode = findBestTemplate(prompt)
-      
-      return {
+
+      const result = {
         shaderCode,
         description: `已根据描述「${prompt}」选择着色器模板。您可以在右侧预览并编辑代码。`,
         model: '模板匹配'
       }
+      persistGenerateResult(prompt, result, JSON.stringify(result))
+      return result
     }
-    
+
     // 验证设置
     if (!settings.token) {
-      throw createError({
-        statusCode: 400,
-        message: '请先配置 API Token'
-      })
+      throw createError({ statusCode: 400, message: '请先配置 API Token' })
     }
-    
+
     // Moonshot token 格式验证
     if (settings.provider === 'moonshot') {
       const token = settings.token.trim()
       if (!token.startsWith('sk-')) {
-        throw createError({
-          statusCode: 400,
-          message: 'Moonshot API Token 格式错误，应以 sk- 开头'
-        })
+        throw createError({ statusCode: 400, message: 'Moonshot API Token 格式错误，应以 sk- 开头' })
       }
     }
-    
+
     // 使用 AI 生成
-    const result = await generateWithAI(prompt, settings)
-    
-    return {
-      shaderCode: result.code,
-      description: `已使用 ${settings.provider} (${result.model}) 根据描述「${prompt}」生成着色器。您可以在右侧预览并编辑代码。`,
-      model: result.model
+    const aiResult = await generateWithAI(prompt, settings)
+
+    const result = {
+      shaderCode: aiResult.code,
+      description: `已使用 ${settings.provider} (${aiResult.model}) 根据描述「${prompt}」生成着色器。您可以在右侧预览并编辑代码。`,
+      model: aiResult.model
     }
+    persistGenerateResult(prompt, result, aiResult.rawData)
+    return result
+
   } catch (error: any) {
-    console.error('着色器生成错误:', error)
-    throw createError({
-      statusCode: 500,
-      message: error.message || '生成失败，请重试'
-    })
+    logError('api/generate-shader', error.message || '生成失败', { provider: reqSettings?.provider })
+    throw createError({ statusCode: 500, message: error.message || '生成失败，请重试' })
   }
 })
+
+function persistGenerateResult(prompt: string, result: any, rawData: string) {
+  try {
+    const db = getDb()
+    const convId = 'gen-' + Date.now().toString(36) + Math.random().toString(36).slice(2)
+    const now = Date.now()
+    db.prepare('INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)')
+      .run(convId, `生成: ${prompt.slice(0, 20)}`, now, now)
+
+    db.prepare(
+      `INSERT INTO messages (id, conversation_id, role, content, raw_response, created_at) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run('u-' + now, convId, 'user', prompt, null, now)
+
+    db.prepare(
+      `INSERT INTO messages (id, conversation_id, role, content, shader_code, raw_response, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run('a-' + now, convId, 'assistant', result.description || '', result.shaderCode || null, rawData, now + 1)
+  } catch (e) {
+    console.error('Failed to persist generate-shader result:', e)
+  }
+}

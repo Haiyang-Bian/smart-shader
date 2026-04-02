@@ -6,7 +6,7 @@
         <span class="logo">✨</span>
         <div class="title-group">
           <h1>Smart Shader</h1>
-          <span v-if="currentModel" class="model-badge" :class="{ 'builtin': settings.provider === 'builtin' }">
+          <span v-if="currentModel" class="model-badge" :class="{ 'builtin': settings.provider === 'builtin' }" @click="settings.provider === 'builtin' ? showSettings = true : undefined">
             {{ currentModel }}
           </span>
         </div>
@@ -162,6 +162,7 @@
         <span class="agent-status-text">{{ agentStatus || (isAgentRunning ? 'Agent 运行中...' : 'Agent 等待中') }}</span>
         <span v-if="agentRound > 0" class="agent-round-badge">第 {{ agentRound }} 轮</span>
         <span v-if="currentRole" class="agent-role-badge">{{ currentRole === 'coder' ? 'Coder' : 'Reviewer' }}</span>
+        <span v-if="userQueue.length > 0" class="agent-queue-badge">{{ userQueue.length }} 条待处理</span>
       </div>
       <!-- 待发送图片预览 -->
       <div v-if="pendingImage" class="pending-image">
@@ -273,7 +274,7 @@
 </template>
 
 <script setup>
-const emit = defineEmits(['shader-generated', 'request-screenshot', 'request-code', 'request-compile-status'])
+const emit = defineEmits(['shader-generated', 'request-screenshot', 'request-code', 'request-compile-status', 'request-code-range', 'modify-code-range', 'insert-code'])
 
 // ============ 使用 Composables ============
 const {
@@ -327,10 +328,12 @@ const {
   status: agentStatus,
   round: agentRound,
   currentRole,
+  userQueue,
   getAgentAvatar,
   runAgentLoop,
   stopAgent,
   requestInterrupt,
+  queueMessage,
   resetAgent
 } = useAgent()
 
@@ -363,8 +366,8 @@ function switchAndClose(id) {
   showConversations.value = false
 }
 
-function clearAllAndClose() {
-  if (clearAllConversations()) {
+async function clearAllAndClose() {
+  if (await clearAllConversations()) {
     loadMessages()
     showConversations.value = false
   }
@@ -523,34 +526,33 @@ async function send() {
       addSystemMessage: (content) => addMessage('system', content),
       requestScreenshot,
       requestCode,
+      requestCodeRange,
+      modifyCodeRange,
+      insertCode,
       onShaderCode: (code) => emit('shader-generated', code),
       onSaveMessages: saveMessages,
       scrollToBottom
     }
 
-    // 如果 Agent 正在运行，立即中断并处理新消息
+    // 如果 Agent 正在运行，将消息加入队列，不阻塞用户输入
     if (isAgentRunning.value) {
       addMessage('user', messageContent)
       saveMessages()
-      requestInterrupt()
-      // 短暂等待让 Agent 停止，然后重新启动
-      setTimeout(async () => {
-        await runAgentLoop(messageContent, messages.value, settings, agentCallbacks)
-      }, 100)
+      queueMessage(messageContent)
       return
     }
 
     if (agentPaused.value) {
       addMessage('user', messageContent)
       saveMessages()
-      await runAgentLoop(messageContent, messages.value, settings, agentCallbacks)
+      await runAgentLoop(messageContent, messages.value, settings, agentCallbacks, currentId.value, true)
       return
     }
 
     // 新启动 Agent
     addMessage('user', messageContent)
     saveMessages()
-    await runAgentLoop(messageContent, messages.value, settings, agentCallbacks)
+    await runAgentLoop(messageContent, messages.value, settings, agentCallbacks, currentId.value, false)
   } else {
     // 普通模式
     addMessage('user', messageContent, {
@@ -589,6 +591,62 @@ async function requestCode() {
   })
 }
 
+async function requestCodeRange(startLine, endLine) {
+  return new Promise((resolve) => {
+    emit('request-code-range', {
+      startLine,
+      endLine,
+      callback: (code) => {
+        resolve(code || `[无法获取第 ${startLine} 到 ${endLine} 行的代码]`)
+      }
+    })
+  })
+}
+
+async function modifyCodeRange(startLine, endLine, newCode) {
+  return new Promise((resolve) => {
+    emit('modify-code-range', {
+      startLine,
+      endLine,
+      newCode,
+      callback: (fullCode) => {
+        resolve(`[已修改第 ${startLine} 到 ${endLine} 行，当前代码共 ${fullCode.split('\n').length} 行]`)
+      }
+    })
+  })
+}
+
+async function insertCode(lineNumber, newCode) {
+  return new Promise((resolve) => {
+    emit('insert-code', {
+      lineNumber,
+      newCode,
+      callback: (fullCode) => {
+        resolve(`[已在第 ${lineNumber} 行后插入代码，当前代码共 ${fullCode.split('\n').length} 行]`)
+      }
+    })
+  })
+}
+
+// 安全解析 JSON 参数
+function safeParseArgs(argsStr) {
+  if (!argsStr) return {}
+  try {
+    const cleaned = argsStr.trim()
+    return JSON.parse(cleaned)
+  } catch (e) {
+    try {
+      const withoutCodeBlock = argsStr.replace(/```[\s\S]*?```/g, '').trim()
+      if (withoutCodeBlock) {
+        return JSON.parse(withoutCodeBlock)
+      }
+    } catch (e2) {
+      // 忽略
+    }
+    throw new Error(`参数解析失败: ${e.message}`)
+  }
+}
+
 async function requestCompileStatus() {
   return new Promise((resolve) => {
     emit('request-compile-status', {
@@ -606,6 +664,8 @@ async function executeToolCalls(toolCalls) {
     const result = { name: toolCall.name, arguments: toolCall.arguments }
 
     try {
+      const args = safeParseArgs(toolCall.arguments)
+
       switch (toolCall.name) {
         case 'capture_screenshot': {
           const screenshotResult = await requestScreenshot()
@@ -616,6 +676,33 @@ async function executeToolCalls(toolCalls) {
         case 'get_current_code':
           result.result = await requestCode()
           break
+        case 'get_code_range': {
+          const { start_line, end_line } = args
+          if (!start_line || !end_line) {
+            result.error = '缺少 start_line 或 end_line 参数'
+          } else {
+            result.result = await requestCodeRange(start_line, end_line)
+          }
+          break
+        }
+        case 'modify_code_range': {
+          const { start_line, end_line, new_code } = args
+          if (!start_line || !end_line || new_code === undefined) {
+            result.error = '缺少 start_line、end_line 或 new_code 参数'
+          } else {
+            result.result = await modifyCodeRange(start_line, end_line, new_code)
+          }
+          break
+        }
+        case 'insert_code': {
+          const { line_number, new_code } = args
+          if (!line_number || new_code === undefined) {
+            result.error = '缺少 line_number 或 new_code 参数'
+          } else {
+            result.result = await insertCode(line_number, new_code)
+          }
+          break
+        }
         default:
           result.error = `未知工具: ${toolCall.name}`
       }
@@ -648,6 +735,12 @@ function adjustTextareaHeight() {
 }
 
 watch(input, adjustTextareaHeight)
+
+watch(showSettings, (val) => {
+  if (!val) {
+    loadSettings()
+  }
+})
 
 function applyShader(code) {
   emit('shader-generated', code)

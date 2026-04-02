@@ -4,6 +4,7 @@ const STORAGE_KEY = 'shader-conversations'
 const CURRENT_ID_KEY = 'shader-current-conversation'
 
 export function useConversations() {
+  const { confirm } = useConfirmDialog()
   const conversations = ref<Conversation[]>([])
   const currentId = ref<string | null>(null)
 
@@ -188,8 +189,15 @@ export function useConversations() {
   }
 
   // 清空所有对话
-  function clearAllConversations() {
-    if (confirm('确定要删除所有对话吗？此操作不可恢复。')) {
+  async function clearAllConversations() {
+    const confirmed = await confirm({
+      title: '删除所有对话',
+      message: '确定要删除所有对话吗？此操作不可恢复。',
+      confirmText: '删除',
+      cancelText: '取消',
+      type: 'danger'
+    })
+    if (confirmed) {
       conversations.value = []
       currentId.value = null
       createConversation('新对话')

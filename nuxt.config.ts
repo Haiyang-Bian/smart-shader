@@ -37,5 +37,9 @@ export default defineNuxtConfig({
   // 或者如果模块有配置，设为 false
   ui: {
     fonts: false
+  },
+
+  runtimeConfig: {
+    adminPassword: process.env.NUXT_ADMIN_PASSWORD || 'admin123'
   }
 })

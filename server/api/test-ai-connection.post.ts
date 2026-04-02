@@ -1,17 +1,18 @@
 import { defineEventHandler, readBody } from 'h3'
+import { logInfo, logError } from '../utils/logger'
 
 export default defineEventHandler(async (event) => {
   try {
     const body = await readBody(event)
     const { provider, token, customUrl } = body
-    
+
     if (!token) {
       return {
         success: false,
         message: 'API token is required'
       }
     }
-    
+
     const apiUrl = customUrl || getDefaultApiUrl(provider)
     
     switch (provider) {
@@ -40,13 +41,14 @@ export default defineEventHandler(async (event) => {
         }
       
       default:
+        logError('api/test-ai-connection', `Unknown provider: ${provider}`)
         return {
           success: false,
           message: `Unknown provider: ${provider}`
         }
     }
   } catch (error: any) {
-    console.error('Connection test error:', error)
+    logError('api/test-ai-connection', error.message || 'Failed to test connection')
     return {
       success: false,
       message: error.message || 'Failed to test connection'
