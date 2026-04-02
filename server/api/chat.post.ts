@@ -155,7 +155,7 @@ function truncateContext(messages: any[]): any[] {
 export default defineEventHandler(async (event) => {
   try {
     const body = await readBody(event)
-    const { messages, settings, stream = false, toolResults = [] } = body
+    const { messages, settings, stream = false, toolResults = [], enableTools: requestEnableTools = false, systemPrompt } = body
     
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return { error: '请提供消息列表' }
@@ -206,14 +206,14 @@ export default defineEventHandler(async (event) => {
         '（用户发送了一张渲染截图，但当前模型不支持图片识别。以下是基于文字描述的回复。）')
     }
     
-    // 判断是否需要启用工具
-    const enableTools = supportsTools(settings.model) && settings.provider === 'moonshot'
-    
+    // 判断是否需要启用工具（优先使用请求中的设置）
+    const enableTools = requestEnableTools && supportsTools(settings.model) && settings.provider === 'moonshot'
+
     // 流式或非流式处理
     if (stream) {
       return await handleStreamResponse(truncatedMessages, settings, enableTools, event)
     } else {
-      return await handleNormalResponse(truncatedMessages, settings, enableTools)
+      return await handleNormalResponse(truncatedMessages, settings, enableTools, systemPrompt)
     }
     
   } catch (error: any) {
@@ -483,25 +483,25 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
 }
 
 // 普通响应
-async function handleNormalResponse(messages: any[], settings: any, enableTools: boolean, prependText: string = '') {
+async function handleNormalResponse(messages: any[], settings: any, enableTools: boolean, systemPrompt?: string) {
   const apiUrl = settings.customUrl || getDefaultApiUrl(settings.provider)
-  
-  const requestBody = prepareRequestBody(messages, settings, enableTools)
-  
+
+  const requestBody = prepareRequestBody(messages, settings, enableTools, systemPrompt)
+
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: prepareHeaders(settings),
     body: JSON.stringify(requestBody)
   })
-  
+
   if (!response.ok) {
     throw new Error(`API 错误: ${await response.text()}`)
   }
-  
+
   const data = await response.json()
   let content = ''
   let toolCalls: any[] = []
-  
+
   // 检查是否有工具调用 (Kimi format)
   if (data.choices?.[0]?.message?.tool_calls) {
     toolCalls = data.choices[0].message.tool_calls.map((tc: any) => ({
@@ -510,28 +510,24 @@ async function handleNormalResponse(messages: any[], settings: any, enableTools:
       arguments: tc.function.arguments
     }))
   }
-  
+
   if (settings.provider === 'anthropic') {
     content = data.content?.[0]?.text || ''
   } else {
     content = data.choices?.[0]?.message?.content || ''
   }
-  
-  if (prependText) {
-    content = prependText + '\n\n' + content
-  }
-  
+
   // 支持 Markdown 代码块和旧的 <shader> 标签
-  const shaderMatch = content.match(/```(?:glsl|shader)\n?([\s\S]*?)```/) || 
+  const shaderMatch = content.match(/```(?:glsl|shader)\n?([\s\S]*?)```/) ||
                      content.match(/<shader>([\s\S]*?)<\/shader>/)
   const shaderCode = shaderMatch?.[1] ? shaderMatch[1].trim() : null
-  
+
   // 移除代码块内容，保留其他文本
   const cleanContent = content
     .replace(/```(?:glsl|shader)\n?[\s\S]*?```/, '')
     .replace(/<shader>[\s\S]*?<\/shader>/, '')
     .trim()
-  
+
   return {
     content: cleanContent,
     shaderCode,
@@ -560,8 +556,8 @@ function prepareHeaders(settings: any): Record<string, string> {
 }
 
 // 准备请求体
-function prepareRequestBody(messages: any[], settings: any, enableTools: boolean): any {
-  const systemPrompt = getSystemPrompt()
+function prepareRequestBody(messages: any[], settings: any, enableTools: boolean, customSystemPrompt?: string): any {
+  const systemPrompt = customSystemPrompt || getSystemPrompt()
   const msgs = messages.filter(m => m.role !== 'system').map(m => {
     // 处理包含图片的消息
     if (m.image && supportsVision(settings.model)) {

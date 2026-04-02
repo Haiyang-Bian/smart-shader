@@ -1,19 +1,37 @@
-import type { Message, ReviewResult, ToolCall, ToolResult, AISettings } from '~/types'
+import type { Message, ToolCall, ToolResult, AISettings } from '../../types'
 
-const MAX_AGENT_IDLE_ROUNDS = 3
-const MAX_AGENT_TOTAL_ROUNDS = 10
-const MAX_AGENT_QUEUE_SIZE = 5
+const MAX_AGENT_ROUNDS = 10
+
+// Agent 系统提示词
+const AGENT_SYSTEM_PROMPT = `你是一个智能着色器开发助手，由两个内部角色协同工作：
+
+## 🧑‍💻 Coder（代码生成者）
+职责：根据需求生成或修改 GLSL 着色器代码，可以调用工具获取当前状态
+
+## 🔍 Reviewer（代码审查者）
+职责：检查生成的着色器是否满足需求，评估视觉效果，给出 PASS/FAIL 结论
+
+## 可用工具
+- capture_screenshot: 捕获当前渲染截图（带 reason 参数）
+- get_current_code: 获取当前编辑器代码（带 reason 参数）
+
+## 规则
+- WebGL 1.0 语法，必须包含 u_time 和 u_resolution
+- Coder 生成代码后用 \`\`\`glsl 包裹
+- Reviewer 最后必须输出 "VERDICT: PASS" 或 "VERDICT: FAIL"，然后说明原因
+- 保持代码可读性
+
+请开始工作。当前角色：Coder`
 
 export function useAgent() {
   const isAgentRunning = ref(false)
   const isPaused = ref(false)
   const status = ref('')
   const round = ref(0)
-  const pendingMessages = ref<{ content: string; timestamp: number }[]>([])
-  const history = ref<Message[]>([])
+  const currentRole = ref<'coder' | 'reviewer'>('coder')
   let abortController: AbortController | null = null
+  let interruptRequested = false
 
-  // 获取 Agent 头像
   function getAgentAvatar(role?: string): string {
     if (role === 'coder') return '🧑‍💻'
     if (role === 'reviewer') return '🔍'
@@ -21,97 +39,69 @@ export function useAgent() {
     return '✨'
   }
 
-  // 解析 Reviewer 响应
-  function parseReviewerResponse(content: string): ReviewResult {
-    if (!content) return { verdict: 'FAIL', feedback: '空响应' }
-
-    const trimmed = content.trim()
-
-    // 1. 尝试匹配 markdown 代码块
-    const codeBlockMatch = trimmed.match(/```(?:json)?\n?([\s\S]*?)```/)
-    if (codeBlockMatch) {
-      try {
-        const parsed = JSON.parse(codeBlockMatch[1].trim())
-        if (parsed.verdict && parsed.feedback) return parsed
-      } catch (e) {}
-    }
-
-    // 2. 尝试直接解析整个内容
-    try {
-      const parsed = JSON.parse(trimmed)
-      if (parsed.verdict && parsed.feedback) {
-        return { verdict: parsed.verdict, feedback: parsed.feedback }
+  function parseReviewResult(content: string): { verdict: 'PASS' | 'FAIL' | null; feedback: string } {
+    const verdictMatch = content.match(/VERDICT\s*:\s*(PASS|FAIL)/i)
+    if (verdictMatch?.[1]) {
+      return {
+        verdict: verdictMatch[1].toUpperCase() as 'PASS' | 'FAIL',
+        feedback: content.replace(/VERDICT\s*:\s*(PASS|FAIL)/i, '').trim()
       }
-    } catch (e) {}
-
-    // 3. 尝试从文本中提取 JSON 对象
-    const jsonMatch = trimmed.match(/\{[\s\S]*?"verdict"[\s\S]*?"feedback"[\s\S]*?\}/)
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0])
-        return { verdict: parsed.verdict, feedback: parsed.feedback }
-      } catch (e2) {}
     }
-
-    // 4. 尝试匹配文本格式的 verdict
-    const textVerdictMatch = trimmed.match(/(?:verdict|Verdict)["']?\s*[:：]\s*["']?(PASS|FAIL|ERROR)["']?/i)
-    if (textVerdictMatch) {
-      const verdict = textVerdictMatch[1].toUpperCase() as ReviewResult['verdict']
-      const feedback = trimmed
-        .replace(/(?:verdict|Verdict)["']?\s*[:：]\s*["']?(PASS|FAIL|ERROR)["']?/i, '')
-        .replace(/^(?:[-—]+|\s)*/, '')
-        .trim() || trimmed
-      return { verdict, feedback }
-    }
-
-    // fallback
-    return { verdict: 'FAIL', feedback: trimmed || '审查结果解析失败' }
+    return { verdict: null, feedback: content }
   }
 
-  // 提取 shader 代码
-  function extractShaderCode(content: string): string | null {
-    const match = content.match(/```(?:glsl|shader)\n?([\s\S]*?)```/) ||
-                  content.match(/<shader>([\s\S]*?)<\/shader>/)
-    return match ? match[1].trim() : null
-  }
-
-  // 获取上下文摘要
-  function getContextSummary(): string {
-    return history.value
-      .filter(m => m.role === 'user')
-      .map(m => m.content)
-      .join('\n---\n')
-  }
-
-  // 调用 chat API
-  async function callChatAPI(
-    msgs: Message[],
+  // 流式调用 chat API
+  async function* streamChatAPI(
+    messages: Message[],
     settings: AISettings,
-    options: { role?: string; stream?: boolean } = {}
+    options: { enableTools?: boolean } = {}
   ) {
-    const { role = 'default', stream = false } = options
+    const { enableTools = false } = options
 
-    const history = msgs.map(m => {
-      const msg: { role: string; content: string; image?: string } = { role: m.role, content: m.content || '' }
-      if (m.image) msg.image = m.image
-      return msg
-    })
+    const formattedMessages = messages.map(m => ({
+      role: m.role,
+      content: m.content || '',
+      ...(m.image ? { image: m.image } : {})
+    }))
 
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        messages: history,
+        messages: formattedMessages,
         settings: settings.provider === 'builtin' ? null : { ...settings },
-        stream,
-        role
+        stream: true,
+        enableTools
       }),
       signal: abortController?.signal
     })
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    if (!response.body) throw new Error('No response body')
 
-    return await response.json()
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6)
+        if (data === '[DONE]') continue
+
+        try {
+          const parsed = JSON.parse(data)
+          yield parsed
+        } catch (e) {}
+      }
+    }
   }
 
   // 执行工具调用
@@ -126,13 +116,12 @@ export function useAgent() {
 
     for (const toolCall of toolCalls) {
       const result: ToolResult = { name: toolCall.name, arguments: toolCall.arguments }
-
       try {
         switch (toolCall.name) {
           case 'capture_screenshot': {
-            const screenshotResult = await callbacks.requestScreenshot()
-            result.result = screenshotResult.text
-            result.image = screenshotResult.image
+            const res = await callbacks.requestScreenshot()
+            result.result = res.text
+            result.image = res.image
             break
           }
           case 'get_current_code':
@@ -144,23 +133,23 @@ export function useAgent() {
       } catch (error: any) {
         result.error = error.message
       }
-
       results.push(result)
     }
 
     return results
   }
 
-  // Agent 主循环
+  // Agent 主循环 - 流式输出
   async function runAgentLoop(
     initialPrompt: string | null,
+    messages: Message[],
     settings: AISettings,
     callbacks: {
       addMessage: (role: Message['role'], content: string, extra?: Partial<Message>) => Message
-      addSystemMessage: (content: string, round?: number) => Message
+      updateLastMessage: (updater: Partial<Message> | ((msg: Message) => Partial<Message>)) => void
+      addSystemMessage: (content: string) => void
       requestScreenshot: () => Promise<{ text: string; image?: string }>
       requestCode: () => Promise<string>
-      requestCompileStatus: () => Promise<{ success: boolean; error: string | null }>
       onShaderCode: (code: string) => void
       onSaveMessages: () => void
       scrollToBottom: () => void
@@ -169,178 +158,204 @@ export function useAgent() {
     if (isAgentRunning.value) return
     isAgentRunning.value = true
     isPaused.value = false
+    interruptRequested = false
     round.value = 0
+    currentRole.value = 'coder'
     abortController = new AbortController()
 
-    if (initialPrompt) {
-      pendingMessages.value = []
-      callbacks.addSystemMessage('🤖 Agent 模式已启动，正在根据需求迭代代码...')
-    } else {
-      callbacks.addSystemMessage('🤖 Agent 继续运行...')
-    }
+    // 工作内存 - 只包含当前轮次的对话
+    const workingMemory: Message[] = [...messages]
 
-    let idleRounds = 0
-    let hasCompleted = false
+    callbacks.addSystemMessage('🤖 Agent 模式已启动，Coder 开始工作...')
 
     try {
-      while (!hasCompleted) {
-        // 1. 处理用户消息队列
-        if (pendingMessages.value.length > 0) {
-          const msgs = [...pendingMessages.value]
-          pendingMessages.value = []
-          for (const m of msgs) {
-            history.value.push({ role: 'user', content: m.content, timestamp: m.timestamp, id: Date.now() })
-          }
-          idleRounds = 0
-          callbacks.addSystemMessage(`收到 ${msgs.length} 条新消息，纳入下一轮迭代...`, round.value)
-        }
-
+      while (round.value < MAX_AGENT_ROUNDS) {
         round.value++
-        idleRounds++
 
-        if (round.value > MAX_AGENT_TOTAL_ROUNDS) {
-          callbacks.addSystemMessage(`⚠️ 已达最大总轮次 (${MAX_AGENT_TOTAL_ROUNDS})，Agent 暂停。发送新消息可继续。`, round.value)
-          isPaused.value = true
-          break
-        }
-
-        // ========== Coder 轮次 ==========
-        status.value = `🧑‍💻 Coder 写代码中 (第 ${round.value} 轮)...`
+        // ========== Coder 阶段（流式）==========
+        currentRole.value = 'coder'
+        status.value = `🧑‍💻 Coder 工作中 (第 ${round.value} 轮)...`
         callbacks.scrollToBottom()
 
-        const coderRes = await callChatAPI(history.value, settings, { role: 'coder', stream: false })
+        const coderMessages: Message[] = [
+          { id: 'sys', role: 'system', content: AGENT_SYSTEM_PROMPT, timestamp: Date.now() },
+          ...workingMemory.filter(m => m.role !== 'system'),
+          ...(round.value === 1 && initialPrompt
+            ? [{ id: Date.now(), role: 'user' as const, content: initialPrompt, timestamp: Date.now() }]
+            : [])
+        ]
 
-        if (abortController.signal.aborted) {
-          throw new Error('AbortError')
+        // 添加一条空的 assistant 消息用于流式更新
+        const coderMsgId = Date.now() + Math.random()
+        callbacks.addMessage('assistant', '', {
+          id: coderMsgId,
+          agentMeta: { role: 'coder', round: round.value },
+          isStreaming: true
+        })
+
+        let coderContent = ''
+        let shaderCode: string | null = null
+        let pendingToolCalls: ToolCall[] = []
+
+        // 流式接收
+        for await (const chunk of streamChatAPI(coderMessages, settings, { enableTools: true })) {
+          if (abortController.signal.aborted) throw new Error('AbortError')
+
+          if (chunk.type === 'content') {
+            coderContent += chunk.content || ''
+            callbacks.updateLastMessage({ content: coderContent })
+            callbacks.scrollToBottom()
+          } else if (chunk.type === 'shader' && chunk.code) {
+            shaderCode = chunk.code
+            callbacks.updateLastMessage({ shaderCode })
+            callbacks.onShaderCode(chunk.code)
+          } else if (chunk.type === 'tool_calls' && chunk.calls) {
+            pendingToolCalls = chunk.calls
+          }
         }
 
-        const coderContent = coderRes.content || ''
-        const shaderCode = coderRes.shaderCode || extractShaderCode(coderContent)
+        // 完成流式输出
+        callbacks.updateLastMessage({ isStreaming: false })
 
-        // 展示 Coder 消息
-        callbacks.addMessage('assistant', coderContent, {
+        // 检查是否为空内容
+        if (!coderContent.trim() && !shaderCode) {
+          coderContent = '（Coder 未返回有效内容）'
+          callbacks.updateLastMessage({ content: coderContent })
+        }
+
+        // 保存到工作内存
+        workingMemory.push({
+          id: coderMsgId,
+          role: 'assistant',
+          content: coderContent,
+          timestamp: Date.now(),
           shaderCode,
           agentMeta: { role: 'coder', round: round.value }
         })
-        if (shaderCode) {
-          callbacks.onShaderCode(shaderCode)
+
+        // 处理工具调用
+        if (pendingToolCalls.length > 0) {
+          status.value = '🔧 执行工具调用...'
+          callbacks.scrollToBottom()
+
+          const toolResults = await executeToolCalls(pendingToolCalls, callbacks)
+
+          // 添加工具结果消息
+          const toolResultContent = toolResults.map(r =>
+            r.image ? `[截图已捕获] ${r.result}` : `[${r.name}] ${r.result || r.error}`
+          ).join('\n')
+
+          callbacks.addMessage('system', toolResultContent, {
+            toolResults,
+            image: toolResults.find(r => r.name === 'capture_screenshot')?.image
+          })
+
+          // 添加用户消息形式的工具结果到工作内存，让 AI 继续处理
+          workingMemory.push({
+            id: Date.now(),
+            role: 'user',
+            content: `工具执行结果：\n${toolResultContent}`,
+            timestamp: Date.now()
+          })
+
+          continue // 继续 Coder 阶段，处理工具结果
         }
 
-        // 防止 API 报错
-        const safeCoderContent = coderContent?.trim() || (coderRes.shaderCode ? '```glsl\n' + coderRes.shaderCode + '\n```' : '代码已生成。')
-        history.value.push({ role: 'assistant', content: safeCoderContent, timestamp: Date.now(), id: Date.now() })
-
-        // 等待渲染编译
-        status.value = '⏳ 等待渲染编译...'
-        await sleep(500)
-
-        // ========== 编译状态 + 截图 ==========
-        const compileStatus = await callbacks.requestCompileStatus()
-
-        if (!compileStatus.success) {
-          callbacks.addSystemMessage(`❌ 编译失败：${compileStatus.error}`, round.value)
-          history.value.push({ role: 'user', content: `编译失败，请修复：\n${compileStatus.error}`, timestamp: Date.now(), id: Date.now() })
-          continue
-        } else {
-          callbacks.addSystemMessage(`✅ 编译通过，正在截图...`, round.value)
-        }
-
-        const screenshotResult = await callbacks.requestScreenshot()
-
-        if (abortController.signal.aborted) {
-          throw new Error('AbortError')
-        }
-
-        // 检查截图有效性
-        const imageData = screenshotResult.image
-        if (!imageData || typeof imageData !== 'string' || imageData.length < 100) {
-          callbacks.addSystemMessage(`❌ 截图失败（无有效图像数据），Agent 暂停。请检查渲染器是否正常。`, round.value)
-          isPaused.value = true
-          break
-        }
-        callbacks.addSystemMessage(`📸 截图已获取（${Math.round(imageData.length / 1024)}KB），正在交给 Reviewer...`, round.value)
-
-        // ========== Reviewer 轮次 ==========
-        status.value = `🔍 Reviewer 检查中 (第 ${round.value} 轮)...`
+        // ========== Reviewer 阶段（流式）==========
+        currentRole.value = 'reviewer'
+        status.value = `🔍 Reviewer 审查中 (第 ${round.value} 轮)...`
         callbacks.scrollToBottom()
 
-        const contextSummary = getContextSummary()
-        const reviewerInput: Message = {
-          role: 'user',
-          content: `请审查当前着色器效果。需求上下文：\n${contextSummary}\n\n当前编译状态：成功。\n截图已经附在本消息中，请直接分析图片给出审查结论（PASS / FAIL / ERROR）。`,
-          timestamp: Date.now(),
-          id: Date.now(),
-          image: imageData
-        }
+        // Reviewer 只审查 Coder 刚生成的代码
+        const reviewerMessages: Message[] = [
+          { id: 'sys', role: 'system', content: AGENT_SYSTEM_PROMPT, timestamp: Date.now() },
+          { id: Date.now(), role: 'user', content: `请审查以下着色器代码：\n\n${coderContent}\n\n请给出审查结论（VERDICT: PASS 或 VERDICT: FAIL）并说明原因。`, timestamp: Date.now() }
+        ]
 
-        const reviewerRes = await callChatAPI([...history.value, reviewerInput], settings, { role: 'reviewer', stream: false })
-
-        if (abortController.signal.aborted) {
-          throw new Error('AbortError')
-        }
-
-        const review = parseReviewerResponse(reviewerRes.content)
-
-        // 展示 Reviewer 消息
-        callbacks.addMessage('assistant', `**Reviewer Verdict: ${review.verdict}**\n\n${review.feedback}`, {
-          agentMeta: { role: 'reviewer', round: round.value }
+        const reviewMsgId = Date.now() + Math.random()
+        callbacks.addMessage('assistant', '', {
+          id: reviewMsgId,
+          agentMeta: { role: 'reviewer', round: round.value },
+          isStreaming: true
         })
 
+        let reviewContent = ''
+
+        for await (const chunk of streamChatAPI(reviewerMessages, settings, { enableTools: false })) {
+          if (abortController.signal.aborted) throw new Error('AbortError')
+
+          if (chunk.type === 'content') {
+            reviewContent += chunk.content || ''
+            callbacks.updateLastMessage({ content: reviewContent })
+            callbacks.scrollToBottom()
+          }
+        }
+
+        callbacks.updateLastMessage({ isStreaming: false })
+
+        // 确保内容不为空
+        if (!reviewContent.trim()) {
+          reviewContent = 'VERDICT: FAIL\n\n审查未返回有效内容，继续迭代。'
+          callbacks.updateLastMessage({ content: reviewContent })
+        }
+
+        const review = parseReviewResult(reviewContent)
+
+        // 检查审查结果
         if (review.verdict === 'PASS') {
-          callbacks.addSystemMessage('✅ Reviewer 审查通过！Agent 迭代完成。', round.value)
-          isPaused.value = false
-          hasCompleted = true
+          callbacks.addSystemMessage(`✅ 第 ${round.value} 轮审查通过！Agent 迭代完成。`)
           break
         }
 
-        // 检查是否达到 idle 上限且队列为空
-        if (idleRounds >= MAX_AGENT_IDLE_ROUNDS && pendingMessages.value.length === 0) {
-          callbacks.addSystemMessage(`⏸️ Agent 已连续迭代 ${idleRounds} 轮，等待你的反馈。发送消息即可继续。`, round.value)
+        // 未通过，添加反馈到工作内存
+        if (review.feedback) {
+          workingMemory.push({
+            id: Date.now(),
+            role: 'user',
+            content: `请根据以下反馈修改代码：\n${review.feedback}`,
+            timestamp: Date.now()
+          })
+        }
+
+        // 检查是否达到最大轮次
+        if (round.value >= MAX_AGENT_ROUNDS) {
+          callbacks.addSystemMessage(`⏸️ 已达最大迭代轮次 (${MAX_AGENT_ROUNDS})，Agent 暂停。`)
           isPaused.value = true
           break
         }
-
-        // 未通过，继续迭代
-        history.value.push({ role: 'user', content: `Reviewer 反馈：${review.feedback}\n请根据反馈修改代码。`, timestamp: Date.now(), id: Date.now() })
       }
 
       callbacks.onSaveMessages()
 
     } catch (error: any) {
       if (error.message === 'AbortError' || error.name === 'AbortError') {
-        callbacks.addSystemMessage('Agent 已停止。')
+        callbacks.addSystemMessage(interruptRequested ? 'Agent 已中断。' : 'Agent 已停止。')
       } else {
-        callbacks.addSystemMessage(`❌ Agent 出错：${error.message || '请检查网络连接和API设置'}`)
+        callbacks.addSystemMessage(`❌ Agent 出错：${error.message || '请检查网络连接'}`)
       }
       isPaused.value = false
     } finally {
       isAgentRunning.value = false
       status.value = ''
       abortController = null
+      interruptRequested = false
     }
   }
 
-  // 停止 Agent
   function stopAgent() {
-    if (abortController) {
-      abortController.abort()
-    }
+    interruptRequested = true
+    if (abortController) abortController.abort()
   }
 
-  // 添加待处理消息
-  function queueMessage(content: string) {
-    pendingMessages.value.push({ content, timestamp: Date.now() })
-    if (pendingMessages.value.length > MAX_AGENT_QUEUE_SIZE) {
-      pendingMessages.value.shift()
-    }
+  function requestInterrupt() {
+    interruptRequested = true
+    if (abortController) abortController.abort()
   }
 
-  // 重置 Agent 状态
   function resetAgent() {
-    pendingMessages.value = []
-    history.value = []
     round.value = 0
     isPaused.value = false
+    currentRole.value = 'coder'
   }
 
   return {
@@ -348,17 +363,11 @@ export function useAgent() {
     isPaused,
     status,
     round,
-    pendingMessages,
+    currentRole,
     getAgentAvatar,
-    parseReviewerResponse,
-    extractShaderCode,
     runAgentLoop,
     stopAgent,
-    queueMessage,
+    requestInterrupt,
     resetAgent
   }
-}
-
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }

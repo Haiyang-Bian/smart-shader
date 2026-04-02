@@ -4,7 +4,7 @@ interface ToastOptions {
   duration?: number
 }
 
-export function useToast() {
+export function useCustomToast() {
   function show(options: ToastOptions | string) {
     const { message, type = 'info', duration = 2000 } = typeof options === 'string'
       ? { message: options, type: 'info' as const, duration: 2000 }

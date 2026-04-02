@@ -134,7 +134,7 @@ const {
   testConnection
 } = useSettings()
 
-const toast = useToast()
+const toast = useCustomToast()
 
 function save() {
   const msg = saveSettings()

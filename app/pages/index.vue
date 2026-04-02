@@ -120,7 +120,7 @@ const shaderRenderer = ref(null)
 
 // 历史版本管理
 const shaderHistory = useShaderHistory()
-const toast = useToast()
+const toast = useCustomToast()
 
 // 监听代码变化自动保存历史
 let historyDebounceTimer = null

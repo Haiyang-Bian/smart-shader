@@ -1,6 +1,8 @@
 import type { Message, ChatRequestBody, AISettings, ToolCall, ToolResult } from '~/types'
 
-export function useChat() {
+export function useChat(conversationId?: Ref<string | null>) {
+  const { updateMessages, currentMessages, currentId } = useConversations()
+
   const messages = ref<Message[]>([])
   const input = ref('')
   const isStreaming = ref(false)
@@ -12,6 +14,13 @@ export function useChat() {
   // 待发送的内容
   const pendingImage = ref<{ dataUrl: string; blob: Blob; timestamp: number } | null>(null)
   const pendingCode = ref('')
+
+  // 同步当前对话的消息
+  watch(() => conversationId?.value || currentId.value, (newId) => {
+    if (newId) {
+      messages.value = currentMessages.value
+    }
+  }, { immediate: true })
 
   // 快捷操作
   const quickActions = [
@@ -62,43 +71,27 @@ export function useChat() {
     return last
   }
 
-  // 加载历史消息
+  // 加载历史消息（从当前对话）
   function loadMessages() {
-    const saved = localStorage.getItem('shader-chat-history')
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed)) {
-          messages.value = parsed.map((m: Message) => ({ ...m, isStreaming: false }))
-        }
-      } catch (e) {
-        console.error('加载历史消息失败:', e)
-      }
+    const msgs = currentMessages.value || []
+    messages.value = msgs.map((m: Message) => ({ ...m, isStreaming: false }))
+  }
+
+  // 保存消息到当前对话
+  function saveMessages() {
+    const activeId = conversationId?.value || currentId.value
+    if (activeId) {
+      updateMessages(activeId, messages.value)
     }
   }
 
-  // 保存消息
-  function saveMessages() {
-    const toSave = messages.value.map(m => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      image: m.image,
-      code: m.code,
-      reasoning: m.reasoning,
-      shaderCode: m.shaderCode,
-      timestamp: m.timestamp
-    }))
-    localStorage.setItem('shader-chat-history', JSON.stringify(toSave))
-  }
-
-  // 清空对话
+  // 清空当前对话
   function clearChat() {
-    if (confirm('确定要清空所有对话记录吗？')) {
+    if (confirm('确定要清空当前对话吗？')) {
       messages.value = []
       pendingImage.value = null
       pendingCode.value = ''
-      localStorage.removeItem('shader-chat-history')
+      saveMessages()
       return true
     }
     return false

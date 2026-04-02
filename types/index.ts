@@ -157,3 +157,19 @@ export interface ToastOptions {
   type?: 'info' | 'success' | 'warning' | 'error'
   duration?: number
 }
+
+// ==================== 多对话管理 ====================
+
+export interface Conversation {
+  id: string
+  title: string
+  messages: Message[]
+  createdAt: number
+  updatedAt: number
+  settings?: AISettings
+}
+
+export interface ConversationsState {
+  conversations: Conversation[]
+  currentId: string | null
+}

@@ -12,6 +12,10 @@
         </div>
       </div>
       <div class="header-actions">
+        <button class="conversations-btn" @click="showConversations = true">
+          <span>💬</span>
+          <span>{{ currentConversation?.title || '对话' }}</span>
+        </button>
         <button
           class="agent-toggle"
           :class="{ active: agentModeEnabled }"
@@ -153,11 +157,11 @@
     <!-- 输入区 -->
     <div class="input-area">
       <!-- Agent 状态条 -->
-      <div v-if="agentStatus || agentPendingMessages.length > 0 || isAgentRunning" class="agent-status-bar">
+      <div v-if="agentStatus || isAgentRunning" class="agent-status-bar">
         <span class="agent-status-icon">🤖</span>
         <span class="agent-status-text">{{ agentStatus || (isAgentRunning ? 'Agent 运行中...' : 'Agent 等待中') }}</span>
         <span v-if="agentRound > 0" class="agent-round-badge">第 {{ agentRound }} 轮</span>
-        <span v-if="agentPendingMessages.length > 0" class="agent-queue-badge">{{ agentPendingMessages.length }} 条待处理</span>
+        <span v-if="currentRole" class="agent-role-badge">{{ currentRole === 'coder' ? 'Coder' : 'Reviewer' }}</span>
       </div>
       <!-- 待发送图片预览 -->
       <div v-if="pendingImage" class="pending-image">
@@ -204,7 +208,7 @@
           @click="send"
           :disabled="(!input.trim() && !pendingImage) || (isStreaming && !isAgentRunning)"
         >
-          <span v-if="isStreaming || isAgentRunning" class="stop-icon" @click.stop="stopStreaming">⏹</span>
+          <span v-if="isStreaming || isAgentRunning" class="stop-icon" @click.stop="handleStop">⏹</span>
           <span v-else>➤</span>
         </button>
       </div>
@@ -241,6 +245,30 @@
       v-if="showSettings"
       v-model="showSettings"
     />
+
+    <!-- 对话列表侧边栏 -->
+    <Teleport to="body">
+      <Transition name="slide-left">
+        <div v-if="showConversations" class="conversations-overlay" @click.self="showConversations = false">
+          <div class="conversations-panel">
+            <div class="conversations-panel-header">
+              <h3>💬 对话列表</h3>
+              <button class="close-btn" @click="showConversations = false">✕</button>
+            </div>
+            <ConversationList
+              :conversations="conversations"
+              :current-id="currentId"
+              :sorted-conversations="sortedConversations"
+              @create="createAndClose"
+              @switch="switchAndClose"
+              @delete="deleteConversation"
+              @update-title="updateTitle"
+              @clear-all="clearAllAndClose"
+            />
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -248,6 +276,19 @@
 const emit = defineEmits(['shader-generated', 'request-screenshot', 'request-code', 'request-compile-status'])
 
 // ============ 使用 Composables ============
+const {
+  conversations,
+  currentId,
+  currentConversation,
+  sortedConversations,
+  loadConversations,
+  createConversation,
+  switchConversation,
+  deleteConversation,
+  updateTitle,
+  clearAllConversations
+} = useConversations()
+
 const {
   messages,
   input,
@@ -270,7 +311,7 @@ const {
   startStreaming,
   stopStreaming,
   formatToolResults
-} = useChat()
+} = useChat(currentId)
 
 const {
   settings,
@@ -285,16 +326,16 @@ const {
   isPaused: agentPaused,
   status: agentStatus,
   round: agentRound,
-  pendingMessages: agentPendingMessages,
+  currentRole,
   getAgentAvatar,
   runAgentLoop,
   stopAgent,
-  queueMessage,
+  requestInterrupt,
   resetAgent
 } = useAgent()
 
 const { formatMessage: formatMessageSafe } = useSafeHtml()
-const toast = useToast()
+const toast = useCustomToast()
 
 // ============ 局部状态 ============
 const messagesEl = ref(null)
@@ -302,14 +343,36 @@ const bottomEl = ref(null)
 const inputEl = ref(null)
 const fileInput = ref(null)
 const agentModeEnabled = ref(false)
+const showConversations = ref(false)
 
 const currentModel = computed(() => {
   if (settings.provider === 'builtin') return '内置助手'
   return settings.model
 })
 
+// ============ 对话列表方法 ============
+function createAndClose() {
+  createConversation()
+  loadMessages()
+  showConversations.value = false
+}
+
+function switchAndClose(id) {
+  switchConversation(id)
+  loadMessages()
+  showConversations.value = false
+}
+
+function clearAllAndClose() {
+  if (clearAllConversations()) {
+    loadMessages()
+    showConversations.value = false
+  }
+}
+
 // ============ 生命周期 ============
 onMounted(() => {
+  loadConversations()
   loadSettings()
   loadMessages()
   adjustTextareaHeight()
@@ -405,6 +468,15 @@ function addCodeBlock(code) {
   })
 }
 
+// ============ 停止生成/Agent ============
+function handleStop() {
+  if (isAgentRunning.value) {
+    stopAgent()
+  } else if (isStreaming.value) {
+    stopStreaming()
+  }
+}
+
 // ============ 发送消息 ============
 function handleEnter(e) {
   if (e.shiftKey) return
@@ -445,42 +517,40 @@ async function send() {
 
   // Agent Mode 逻辑
   if (agentModeEnabled.value) {
+    const agentCallbacks = {
+      addMessage,
+      updateLastMessage,
+      addSystemMessage: (content) => addMessage('system', content),
+      requestScreenshot,
+      requestCode,
+      onShaderCode: (code) => emit('shader-generated', code),
+      onSaveMessages: saveMessages,
+      scrollToBottom
+    }
+
+    // 如果 Agent 正在运行，立即中断并处理新消息
     if (isAgentRunning.value) {
-      queueMessage(messageContent)
       addMessage('user', messageContent)
       saveMessages()
+      requestInterrupt()
+      // 短暂等待让 Agent 停止，然后重新启动
+      setTimeout(async () => {
+        await runAgentLoop(messageContent, messages.value, settings, agentCallbacks)
+      }, 100)
       return
     }
 
     if (agentPaused.value) {
       addMessage('user', messageContent)
-      queueMessage(messageContent)
-      await runAgentLoop(messageContent, settings, {
-        addMessage,
-        addSystemMessage: (content, round) => addMessage('system', content, { agentMeta: { role: 'system', round } }),
-        requestScreenshot,
-        requestCode,
-        requestCompileStatus,
-        onShaderCode: (code) => emit('shader-generated', code),
-        onSaveMessages: saveMessages,
-        scrollToBottom
-      })
+      saveMessages()
+      await runAgentLoop(messageContent, messages.value, settings, agentCallbacks)
       return
     }
 
     // 新启动 Agent
     addMessage('user', messageContent)
     saveMessages()
-    await runAgentLoop(messageContent, settings, {
-      addMessage,
-      addSystemMessage: (content, round) => addMessage('system', content, { agentMeta: { role: 'system', round } }),
-      requestScreenshot,
-      requestCode,
-      requestCompileStatus,
-      onShaderCode: (code) => emit('shader-generated', code),
-      onSaveMessages: saveMessages,
-      scrollToBottom
-    })
+    await runAgentLoop(messageContent, messages.value, settings, agentCallbacks)
   } else {
     // 普通模式
     addMessage('user', messageContent, {
@@ -1360,6 +1430,96 @@ h1 {
   border: 1px solid #252538;
   color: #808090;
   font-size: 13px;
+}
+
+/* 对话切换按钮 */
+.conversations-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: #252538;
+  border: none;
+  border-radius: 8px;
+  color: #a0a0b0;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.conversations-btn:hover {
+  background: #353550;
+  color: #fff;
+}
+
+.conversations-btn span:last-child {
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 对话列表侧边栏 */
+.conversations-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.conversations-panel {
+  width: 320px;
+  height: 100%;
+  background: #13131f;
+  border-right: 1px solid #252538;
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.conversations-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #252538;
+}
+
+.conversations-panel-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.close-btn {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #808090;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: #252538;
+  color: #fff;
 }
 
 /* 自定义滚动条 */

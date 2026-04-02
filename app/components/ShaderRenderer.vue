@@ -89,7 +89,7 @@ const emit = defineEmits(['screenshot-captured', 'compile-error', 'compile-succe
 
 const canvas = ref(null)
 const fpsMonitor = useFpsMonitor()
-const toast = useToast()
+const toast = useCustomToast()
 
 const state = reactive({
   ready: false,

@@ -8,7 +8,8 @@
       "Bash(python /tmp/fix3.py)",
       "Bash(python /tmp/fix_all.py)",
       "Bash(python /tmp/fix_direct.py)",
-      "Bash(python /tmp/fix_line.py)"
+      "Bash(python /tmp/fix_line.py)",
+      "Bash(git mv:*)"
     ]
   }
 }
