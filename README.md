@@ -4,7 +4,7 @@
 
 一个基于 **Nuxt 4** 的全栈应用，通过自然语言与 AI 交互，自动生成、迭代优化 GLSL 片段着色器代码，并提供实时 WebGL 预览。项目核心创新是实现了 **Coder + Reviewer 双角色 Agent 自动迭代模式**，让 AI 具备自我修正能力。
 
-[![版本](https://img.shields.io/badge/version-0.1.1-blue)](https://github.com/yourusername/smart-shader)
+[![版本](https://img.shields.io/badge/version-0.2.0-blue)](https://github.com/Haiyang-Bian/smart-shader)
 [![Nuxt](https://img.shields.io/badge/Nuxt-4.4.2-00DC82)](https://nuxt.com/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
