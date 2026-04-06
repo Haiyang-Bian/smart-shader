@@ -20,6 +20,14 @@
 | **流式对话系统** | SSE 实时流式响应，支持打字机效果与代码块实时提取 |
 | **多 AI 提供商适配** | 统一抽象层支持 OpenAI、Anthropic、Moonshot、OpenRouter、Ollama |
 
+### 软件主界面
+
+![软件主界面](./docs/images/main-ui.jpeg)
+
+### 交互示意图
+
+![交互示意图](./docs/images/work.jpeg)
+
 ---
 
 ## 🏗️ 系统架构
@@ -97,6 +105,10 @@ flowchart TB
     style Coder fill:#fff3e0,stroke:#ef6c00
     style Reviewer fill:#f3e5f5,stroke:#7b1fa2
 ```
+
+#### 智能体模式工作图
+
+![智能体模式工作图](./docs/images/agent-mode.jpeg)
 
 ### 时序图：完整迭代流程
 
