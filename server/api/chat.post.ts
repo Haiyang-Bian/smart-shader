@@ -2,6 +2,7 @@ import { defineEventHandler, readBody } from 'h3'
 import { getDb } from '../utils/db'
 import { logInfo, logError } from '../utils/logger'
 import { getDefaultApiUrl, buildAuthHeaders, isFixedTemperatureModel, validateSettingsForProvider } from '../utils/llm/registry'
+import { extractShaderCode } from '../utils/llm/shader'
 
 // 工具定义
 const TOOLS = [
@@ -801,12 +802,7 @@ function prepareRequestBody(messages: any[], settings: any, enableTools: boolean
   return body
 }
 
-// 提取 GLSL 代码块（支持 ```glsl / ```shader / <shader>...</shader>）。
-export function extractShaderCode(content: string): string | null {
-  const match = content.match(/```(?:glsl|shader)\n?([\s\S]*?)```/) ||
-                content.match(/<shader>([\s\S]*?)<\/shader>/)
-  return match?.[1] ? match[1].trim() : null
-}
+// (extractShaderCode moved to server/utils/llm/shader.ts so it can be imported from unit tests.)
 
 // ==================== Database Helpers ====================
 
