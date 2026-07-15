@@ -477,8 +477,8 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  background: #13131f;
-  border-top: 1px solid #252538;
+  background: var(--color-bg-elevated);
+  border-top: 1px solid var(--color-bg-elevated-2);
   flex-wrap: wrap;
 }
 
@@ -487,7 +487,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: 1px solid #353550;
   border-radius: 8px;
   color: #e0e0f0;
@@ -498,7 +498,7 @@ onUnmounted(() => {
 
 .toolbar-btn:hover:not(:disabled) {
   background: #353550;
-  border-color: #8b5cf6;
+  border-color: var(--color-accent);
 }
 
 .toolbar-btn:disabled {
@@ -507,7 +507,7 @@ onUnmounted(() => {
 }
 
 .toolbar-btn.primary {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  background: linear-gradient(135deg, var(--color-accent), #ec4899);
   border-color: transparent;
   color: white;
 }
@@ -544,7 +544,7 @@ onUnmounted(() => {
   gap: 12px;
   padding: 20px;
   text-align: center;
-  background: #0a0a0f;
+  background: var(--color-bg-base);
 }
 
 .shader-error {
@@ -568,7 +568,7 @@ onUnmounted(() => {
 
 .shader-error details pre {
   text-align: left;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   padding: 12px;
   border-radius: 8px;
   overflow-x: auto;
@@ -581,7 +581,7 @@ onUnmounted(() => {
   width: 24px;
   height: 24px;
   border: 2px solid #353550;
-  border-top-color: #8b5cf6;
+  border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -629,7 +629,7 @@ onUnmounted(() => {
 
 .screenshot-actions button {
   padding: 10px 20px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: 1px solid #353550;
   border-radius: 8px;
   color: #e0e0f0;
@@ -640,11 +640,11 @@ onUnmounted(() => {
 
 .screenshot-actions button:hover {
   background: #353550;
-  border-color: #8b5cf6;
+  border-color: var(--color-accent);
 }
 
 .screenshot-actions .btn-primary {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  background: linear-gradient(135deg, var(--color-accent), #ec4899);
   border-color: transparent;
   color: white;
 }

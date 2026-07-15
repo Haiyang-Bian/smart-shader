@@ -234,7 +234,7 @@ onUnmounted(() => {
 <style scoped>
 .admin-page {
   min-height: 100vh;
-  background: #0a0a0f;
+  background: var(--color-bg-base);
   color: #e0e0f0;
 }
 .login-panel {
@@ -247,7 +247,7 @@ onUnmounted(() => {
 }
 .login-panel input {
   padding: 12px 16px;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border: 1px solid #353550;
   border-radius: 8px;
   color: #fff;
@@ -256,7 +256,7 @@ onUnmounted(() => {
 }
 .login-panel button {
   padding: 10px 24px;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  background: linear-gradient(135deg, var(--color-accent), #ec4899);
   border: none;
   border-radius: 8px;
   color: #fff;
@@ -272,8 +272,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
-  background: #13131f;
-  border-bottom: 1px solid #252538;
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-bg-elevated-2);
 }
 .admin-header h1 {
   margin: 0;
@@ -281,7 +281,7 @@ onUnmounted(() => {
 }
 .admin-header button {
   padding: 6px 14px;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border: 1px solid #353550;
   border-radius: 6px;
   color: #fff;
@@ -294,8 +294,8 @@ onUnmounted(() => {
 }
 .admin-sidebar {
   width: 180px;
-  background: #13131f;
-  border-right: 1px solid #252538;
+  background: var(--color-bg-elevated);
+  border-right: 1px solid var(--color-bg-elevated-2);
   display: flex;
   flex-direction: column;
   padding: 12px;
@@ -331,18 +331,18 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
 }
 .toolbar select {
   padding: 8px 12px;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border: 1px solid #353550;
   border-radius: 6px;
   color: #fff;
 }
 .refresh-btn {
   padding: 6px 14px;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border: 1px solid #353550;
   border-radius: 6px;
   color: #fff;
@@ -367,7 +367,7 @@ onUnmounted(() => {
 }
 .data-table th, .data-table td {
   padding: 10px 12px;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
   text-align: left;
   vertical-align: top;
 }
@@ -404,11 +404,11 @@ onUnmounted(() => {
   justify-content: center;
   gap: 12px;
   padding: 12px 16px;
-  border-top: 1px solid #252538;
+  border-top: 1px solid var(--color-bg-elevated-2);
 }
 .pagination button {
   padding: 6px 14px;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border: 1px solid #353550;
   border-radius: 6px;
   color: #fff;
@@ -423,7 +423,7 @@ onUnmounted(() => {
 .conv-list {
   width: 320px;
   overflow-y: auto;
-  border-right: 1px solid #252538;
+  border-right: 1px solid var(--color-bg-elevated-2);
   display: flex;
   flex-direction: column;
 }
@@ -432,17 +432,17 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
   font-size: 14px;
   color: #a0a0b0;
 }
 .conv-item {
   padding: 12px 16px;
   cursor: pointer;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
   position: relative;
 }
-.conv-item:hover { background: #1a1a2a; }
+.conv-item:hover { background: var(--color-bg-extra); }
 .conv-item.active { background: rgba(139, 92, 246, 0.1); }
 .conv-title { font-weight: 500; margin-bottom: 4px; }
 .conv-meta { font-size: 12px; color: #808090; }
@@ -474,18 +474,18 @@ onUnmounted(() => {
 }
 .msg-item { margin-bottom: 16px; padding: 14px; border-radius: 10px; }
 .msg-item.user { background: rgba(139, 92, 246, 0.12); }
-.msg-item.assistant { background: #1a1a2a; }
+.msg-item.assistant { background: var(--color-bg-extra); }
 .msg-item.system { background: #0f0f17; color: #808090; font-size: 13px; }
 .msg-item.tool { background: #0f0f17; color: #a0a0b0; font-size: 13px; }
 .msg-header { font-size: 12px; color: #808090; margin-bottom: 8px; text-transform: capitalize; }
 .msg-content { line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 .msg-reasoning { margin-top: 8px; padding: 10px; background: #0f0f17; border-radius: 6px; font-size: 12px; color: #808090; }
-.msg-shader pre { margin: 8px 0 0; padding: 10px; background: #0a0a0f; border-radius: 6px; overflow-x: auto; font-size: 12px; }
-.msg-toolcalls pre { margin: 8px 0 0; padding: 10px; background: #0a0a0f; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+.msg-shader pre { margin: 8px 0 0; padding: 10px; background: var(--color-bg-base); border-radius: 6px; overflow-x: auto; font-size: 12px; }
+.msg-toolcalls pre { margin: 8px 0 0; padding: 10px; background: var(--color-bg-base); border-radius: 6px; overflow-x: auto; font-size: 12px; }
 .msg-raw { margin-top: 10px; }
-.msg-raw summary { cursor: pointer; color: #8b5cf6; font-size: 12px; }
-.raw-content { padding: 10px; background: #0a0a0f; border-radius: 6px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
-.msg-image img { max-width: 200px; max-height: 150px; border-radius: 6px; border: 1px solid #252538; margin-top: 8px; }
+.msg-raw summary { cursor: pointer; color: var(--color-accent); font-size: 12px; }
+.raw-content { padding: 10px; background: var(--color-bg-base); border-radius: 6px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+.msg-image img { max-width: 200px; max-height: 150px; border-radius: 6px; border: 1px solid var(--color-bg-elevated-2); margin-top: 8px; }
 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #353550; border-radius: 3px; }

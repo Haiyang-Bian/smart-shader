@@ -1,0 +1,20 @@
+/*
+ * Design tokens for Smart Shader.
+ * Loaded globally via the `css` array in nuxt.config.ts so they are
+ * inherited into every <style scoped> block without per-component imports.
+ *
+ * Naming: --color-<role>[-<variant>]
+ *   role = the semantic purpose (background, accent, text) rather than the hue.
+ */
+:root {
+  /* Backgrounds (dark theme) */
+  --color-bg-base: #0a0a0f;          /* page / canvas / code content */
+  --color-bg-elevated: #13131f;      /* headers, sidebars, modals, panels */
+  --color-bg-elevated-2: #252538;    /* nested surfaces, list rows, dividers */
+  --color-bg-extra: #1a1a2a;         /* tertiary surfaces (Monaco, list items) */
+
+  /* Accents (purple-led gradient) */
+  --color-accent: #8b5cf6;           /* primary action / focus / brand */
+  --color-accent-2: #ec4899;         /* gradient second stop */
+  --color-accent-dark: #7c3aed;      /* pressed / darker gradient stop */
+}

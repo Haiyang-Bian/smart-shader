@@ -168,8 +168,8 @@ function formatTime(timestamp) {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #13131f;
-  border-right: 1px solid #252538;
+  background: var(--color-bg-elevated);
+  border-right: 1px solid var(--color-bg-elevated-2);
 }
 
 .conversation-header {
@@ -177,7 +177,7 @@ function formatTime(timestamp) {
   align-items: center;
   justify-content: space-between;
   padding: 16px;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
 }
 
 .conversation-header h3 {
@@ -192,7 +192,7 @@ function formatTime(timestamp) {
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  background: linear-gradient(135deg, var(--color-accent), #ec4899);
   border: none;
   border-radius: 8px;
   color: white;
@@ -223,7 +223,7 @@ function formatTime(timestamp) {
 }
 
 .conversation-item:hover {
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
 }
 
 .conversation-item.active {
@@ -265,8 +265,8 @@ function formatTime(timestamp) {
 .conv-edit input {
   flex: 1;
   padding: 4px 8px;
-  background: #252538;
-  border: 1px solid #8b5cf6;
+  background: var(--color-bg-elevated-2);
+  border: 1px solid var(--color-accent);
   border-radius: 4px;
   color: #fff;
   font-size: 13px;
@@ -309,7 +309,7 @@ function formatTime(timestamp) {
 }
 
 .action-btn:hover {
-  background: #252538;
+  background: var(--color-bg-elevated-2);
 }
 
 .action-btn.delete:hover {
@@ -323,7 +323,7 @@ function formatTime(timestamp) {
 
 .conversation-footer {
   padding: 12px;
-  border-top: 1px solid #252538;
+  border-top: 1px solid var(--color-bg-elevated-2);
 }
 
 .clear-all-btn {

@@ -33,5 +33,8 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     adminPassword: process.env.NUXT_ADMIN_PASSWORD || 'admin123'
-  }
+  },
+
+  // Global stylesheet with design tokens (loaded on both server and client).
+  css: ['~/assets/css/tokens.css']
 })

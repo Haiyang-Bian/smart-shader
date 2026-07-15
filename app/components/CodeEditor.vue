@@ -233,7 +233,7 @@ onMounted(async () => {
       { token: 'delimiter', foreground: 'D4D4D4' },
     ],
     colors: {
-      'editor.background': '#1a1a2a',
+      'editor.background': 'var(--color-bg-extra)',
       'editor.lineHighlightBackground': '#2a2a3a',
       'editor.selectionBackground': '#264f78',
     }
@@ -416,8 +416,8 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: #13131f;
-  border-bottom: 1px solid #252538;
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-bg-elevated-2);
   flex-shrink: 0;
 }
 
@@ -441,7 +441,7 @@ defineExpose({
   align-items: center;
   gap: 4px;
   padding: 6px 12px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: 1px solid #353550;
   border-radius: 6px;
   color: #a0a0b0;
@@ -456,7 +456,7 @@ defineExpose({
 }
 
 .tool-btn.primary {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  background: linear-gradient(135deg, var(--color-accent), #ec4899);
   border-color: transparent;
   color: white;
 }
@@ -479,6 +479,6 @@ defineExpose({
   align-items: center;
   justify-content: center;
   color: #606070;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
 }
 </style>

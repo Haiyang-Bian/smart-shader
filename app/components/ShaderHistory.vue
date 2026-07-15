@@ -86,8 +86,8 @@ const showList = ref(false)
 <style scoped>
 .shader-history {
   padding: 8px 12px;
-  background: #13131f;
-  border-bottom: 1px solid #252538;
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-bg-elevated-2);
 }
 
 .history-header {
@@ -110,7 +110,7 @@ const showList = ref(false)
 .history-btn {
   width: 28px;
   height: 28px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: 1px solid #353550;
   border-radius: 6px;
   color: #a0a0b0;
@@ -148,7 +148,7 @@ const showList = ref(false)
   width: 100%;
   max-width: 400px;
   max-height: 80vh;
-  background: #13131f;
+  background: var(--color-bg-elevated);
   border-radius: 16px;
   border: 1px solid #353550;
   overflow: hidden;
@@ -161,7 +161,7 @@ const showList = ref(false)
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
 }
 
 .history-modal-header h3 {
@@ -197,7 +197,7 @@ const showList = ref(false)
   justify-content: space-between;
   padding: 12px 16px;
   margin: 4px 0;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
@@ -205,13 +205,13 @@ const showList = ref(false)
 }
 
 .history-item:hover {
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border-color: #353550;
 }
 
 .history-item.current {
   background: rgba(139, 92, 246, 0.1);
-  border-color: #8b5cf6;
+  border-color: var(--color-accent);
 }
 
 .history-item-info {
@@ -237,7 +237,7 @@ const showList = ref(false)
 
 .history-item-restore {
   padding: 6px 12px;
-  background: #8b5cf6;
+  background: var(--color-accent);
   border: none;
   border-radius: 6px;
   color: white;
@@ -253,14 +253,14 @@ const showList = ref(false)
 
 .history-modal-footer {
   padding: 16px 20px;
-  border-top: 1px solid #252538;
+  border-top: 1px solid var(--color-bg-elevated-2);
   display: flex;
   justify-content: flex-end;
 }
 
 .btn-secondary {
   padding: 8px 16px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: none;
   border-radius: 8px;
   color: #a0a0b0;

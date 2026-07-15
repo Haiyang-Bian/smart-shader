@@ -759,7 +759,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0a0a0f;
+  background: var(--color-bg-base);
 }
 
 /* 头部 */
@@ -768,8 +768,8 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: #13131f;
-  border-bottom: 1px solid #252538;
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-bg-elevated-2);
   flex-shrink: 0;
 }
 
@@ -792,7 +792,7 @@ defineExpose({
 h1 {
   font-size: 16px;
   font-weight: 600;
-  background: linear-gradient(90deg, #8b5cf6, #ec4899);
+  background: linear-gradient(90deg, var(--color-accent), #ec4899);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin: 0;
@@ -823,7 +823,7 @@ h1 {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: none;
   border-radius: 8px;
   color: #a0a0b0;
@@ -851,7 +851,7 @@ h1 {
   bottom: 100px;
   right: 30px;
   padding: 10px 16px;
-  background: #8b5cf6;
+  background: var(--color-accent);
   border: none;
   border-radius: 20px;
   color: white;
@@ -881,7 +881,7 @@ h1 {
   padding: 40px 30px;
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(236, 72, 153, 0.1));
   border-radius: 20px;
-  border: 1px solid #252538;
+  border: 1px solid var(--color-bg-elevated-2);
 }
 
 .welcome-icon {
@@ -917,7 +917,7 @@ h1 {
 
 .mode-notice button {
   padding: 8px 16px;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  background: linear-gradient(135deg, var(--color-accent), #ec4899);
   border: none;
   border-radius: 8px;
   color: white;
@@ -942,7 +942,7 @@ h1 {
   align-items: center;
   gap: 6px;
   padding: 10px 16px;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border: 1px solid #353550;
   border-radius: 20px;
   color: #e0e0f0;
@@ -952,8 +952,8 @@ h1 {
 }
 
 .quick-actions button:hover {
-  background: #252538;
-  border-color: #8b5cf6;
+  background: var(--color-bg-elevated-2);
+  border-color: var(--color-accent);
   transform: translateY(-1px);
 }
 
@@ -981,7 +981,7 @@ h1 {
   width: 32px;
   height: 32px;
   border-radius: 10px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -990,7 +990,7 @@ h1 {
 }
 
 .avatar.assistant {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  background: linear-gradient(135deg, var(--color-accent), #ec4899);
 }
 
 .message-content {
@@ -1001,7 +1001,7 @@ h1 {
 }
 
 .bubble {
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   padding: 14px 18px;
   border-radius: 16px;
   border-bottom-left-radius: 4px;
@@ -1012,7 +1012,7 @@ h1 {
 }
 
 .message-wrapper.user .bubble {
-  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  background: linear-gradient(135deg, var(--color-accent), #7c3aed);
   border-bottom-left-radius: 16px;
   border-bottom-right-radius: 4px;
   color: #fff;
@@ -1035,7 +1035,7 @@ h1 {
 }
 
 .message-text :deep(pre) {
-  background: #0a0a0f;
+  background: var(--color-bg-base);
   padding: 12px;
   border-radius: 8px;
   overflow-x: auto;
@@ -1054,14 +1054,14 @@ h1 {
 /* 思考过程 */
 .reasoning-block {
   background: #0f0f17;
-  border: 1px solid #252538;
+  border: 1px solid var(--color-bg-elevated-2);
   border-radius: 8px;
   overflow: hidden;
   margin-bottom: 8px;
 }
 
 .reasoning-block.active {
-  border-color: #8b5cf6;
+  border-color: var(--color-accent);
   background: rgba(139, 92, 246, 0.05);
 }
 
@@ -1119,7 +1119,7 @@ h1 {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  background: linear-gradient(135deg, var(--color-accent), #ec4899);
   border: none;
   border-radius: 10px;
   font-size: 13px;
@@ -1158,8 +1158,8 @@ h1 {
 /* 输入区域 */
 .input-area {
   padding: 16px 20px;
-  background: #13131f;
-  border-top: 1px solid #252538;
+  background: var(--color-bg-elevated);
+  border-top: 1px solid var(--color-bg-elevated-2);
   flex-shrink: 0;
 }
 
@@ -1171,7 +1171,7 @@ h1 {
   margin-bottom: 12px;
   padding: 12px;
   background: rgba(139, 92, 246, 0.1);
-  border: 1px dashed #8b5cf6;
+  border: 1px dashed var(--color-accent);
   border-radius: 12px;
 }
 
@@ -1206,7 +1206,7 @@ h1 {
 
 .image-hint {
   font-size: 12px;
-  color: #8b5cf6;
+  color: var(--color-accent);
 }
 
 /* 待发送代码 */
@@ -1246,7 +1246,7 @@ h1 {
 .code-preview {
   margin: 0;
   padding: 10px;
-  background: #0a0a0f;
+  background: var(--color-bg-base);
   border-radius: 8px;
   font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
@@ -1268,7 +1268,7 @@ h1 {
 
 .suggestions button {
   padding: 6px 12px;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border: 1px solid #353550;
   border-radius: 16px;
   color: #a0a0b0;
@@ -1279,9 +1279,9 @@ h1 {
 }
 
 .suggestions button:hover {
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   color: #fff;
-  border-color: #8b5cf6;
+  border-color: var(--color-accent);
 }
 
 .input-row {
@@ -1293,7 +1293,7 @@ h1 {
 .input-row textarea {
   flex: 1;
   padding: 12px 16px;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border: 1px solid #353550;
   border-radius: 12px;
   color: #fff;
@@ -1307,7 +1307,7 @@ h1 {
 }
 
 .input-row textarea:focus {
-  border-color: #8b5cf6;
+  border-color: var(--color-accent);
 }
 
 .input-row textarea::placeholder {
@@ -1317,7 +1317,7 @@ h1 {
 .send-btn {
   width: 44px;
   height: 44px;
-  background: #8b5cf6;
+  background: var(--color-accent);
   border: none;
   border-radius: 12px;
   color: #fff;
@@ -1356,7 +1356,7 @@ h1 {
   gap: 8px;
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid #252538;
+  border-top: 1px solid var(--color-bg-elevated-2);
 }
 
 .upload-btn {
@@ -1364,7 +1364,7 @@ h1 {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border: 1px solid #353550;
   border-radius: 8px;
   color: #a0a0b0;
@@ -1374,8 +1374,8 @@ h1 {
 }
 
 .upload-btn:hover:not(:disabled) {
-  background: #252538;
-  border-color: #8b5cf6;
+  background: var(--color-bg-elevated-2);
+  border-color: var(--color-accent);
   color: #fff;
 }
 
@@ -1413,7 +1413,7 @@ h1 {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: 1px solid #353550;
   border-radius: 8px;
   color: #a0a0b0;
@@ -1428,7 +1428,7 @@ h1 {
 }
 
 .agent-toggle.active {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  background: linear-gradient(135deg, var(--color-accent), #ec4899);
   border-color: transparent;
   color: white;
 }
@@ -1441,7 +1441,7 @@ h1 {
   margin-bottom: 12px;
   padding: 10px 14px;
   background: rgba(139, 92, 246, 0.1);
-  border: 1px dashed #8b5cf6;
+  border: 1px dashed var(--color-accent);
   border-radius: 10px;
   font-size: 13px;
   color: #e0e0f0;
@@ -1489,7 +1489,7 @@ h1 {
 }
 
 .avatar.system {
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   color: #a0a0b0;
   font-size: 12px;
 }
@@ -1521,7 +1521,7 @@ h1 {
 /* System messages in agent mode */
 .message-wrapper.system .bubble {
   background: #0f0f17;
-  border: 1px solid #252538;
+  border: 1px solid var(--color-bg-elevated-2);
   color: #808090;
   font-size: 13px;
 }
@@ -1532,7 +1532,7 @@ h1 {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: none;
   border-radius: 8px;
   color: #a0a0b0;
@@ -1566,8 +1566,8 @@ h1 {
 .conversations-panel {
   width: 320px;
   height: 100%;
-  background: #13131f;
-  border-right: 1px solid #252538;
+  background: var(--color-bg-elevated);
+  border-right: 1px solid var(--color-bg-elevated-2);
   display: flex;
   flex-direction: column;
   animation: slideIn 0.2s ease;
@@ -1587,7 +1587,7 @@ h1 {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
 }
 
 .conversations-panel-header h3 {
@@ -1612,7 +1612,7 @@ h1 {
 }
 
 .close-btn:hover {
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   color: #fff;
 }
 

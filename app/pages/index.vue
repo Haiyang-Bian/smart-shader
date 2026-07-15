@@ -373,7 +373,7 @@ onMounted(() => {
 
 html, body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  background: #0a0a0f;
+  background: var(--color-bg-base);
   color: #fff;
   height: 100vh;
   overflow: hidden;
@@ -419,8 +419,8 @@ html, body {
   width: 45%;
   min-width: 360px;
   max-width: 800px;
-  background: #13131f;
-  border-right: 1px solid #252538;
+  background: var(--color-bg-elevated);
+  border-right: 1px solid var(--color-bg-elevated-2);
   display: flex;
   flex-direction: column;
   transition: width 0.3s ease, min-width 0.3s ease;
@@ -443,14 +443,14 @@ html, body {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
   flex-shrink: 0;
 }
 
 .toggle-btn {
   width: 28px;
   height: 28px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: none;
   border-radius: 6px;
   color: #a0a0b0;
@@ -487,7 +487,7 @@ html, body {
 .preview-section {
   height: 45%;
   min-height: 150px;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -532,7 +532,7 @@ html, body {
 }
 
 .icon-btn:hover {
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   color: #fff;
 }
 
@@ -556,13 +556,13 @@ html, body {
 }
 
 .resize-handle-vertical:hover {
-  background: #8b5cf6;
+  background: var(--color-accent);
 }
 
 /* 水平拖拽条 */
 .resize-handle-horizontal {
   height: 6px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   cursor: row-resize;
   flex-shrink: 0;
   z-index: 10;
@@ -570,7 +570,7 @@ html, body {
 }
 
 .resize-handle-horizontal:hover {
-  background: #8b5cf6;
+  background: var(--color-accent);
 }
 
 /* 主体区域 */
@@ -592,7 +592,7 @@ html, body {
     max-width: none !important;
     height: 40%;
     border-right: none;
-    border-bottom: 1px solid #252538;
+    border-bottom: 1px solid var(--color-bg-elevated-2);
   }
 
   .sidebar.collapsed {

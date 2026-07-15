@@ -159,7 +159,7 @@ function save() {
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
-  background: #13131f;
+  background: var(--color-bg-elevated);
   border-radius: 16px;
   border: 1px solid #353550;
   overflow: auto;
@@ -170,10 +170,10 @@ function save() {
   align-items: center;
   justify-content: space-between;
   padding: 20px;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
   position: sticky;
   top: 0;
-  background: #13131f;
+  background: var(--color-bg-elevated);
   z-index: 10;
 }
 
@@ -192,7 +192,7 @@ function save() {
 
 .form-group {
   padding: 16px 20px;
-  border-bottom: 1px solid #252538;
+  border-bottom: 1px solid var(--color-bg-elevated-2);
 }
 
 .form-group label {
@@ -207,7 +207,7 @@ function save() {
 .form-group input {
   width: 100%;
   padding: 10px 12px;
-  background: #1a1a2a;
+  background: var(--color-bg-extra);
   border: 1px solid #353550;
   border-radius: 8px;
   color: #fff;
@@ -237,7 +237,7 @@ function save() {
 
 .refresh-btn {
   width: 40px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: 1px solid #353550;
   border-radius: 8px;
   color: #a0a0b0;
@@ -255,7 +255,7 @@ function save() {
 
 .token-input button {
   width: 40px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: 1px solid #353550;
   border-radius: 8px;
   color: #a0a0b0;
@@ -274,12 +274,12 @@ function save() {
   gap: 10px;
   padding: 16px 20px;
   justify-content: flex-end;
-  border-top: 1px solid #252538;
+  border-top: 1px solid var(--color-bg-elevated-2);
 }
 
 .btn-secondary {
   padding: 10px 16px;
-  background: #252538;
+  background: var(--color-bg-elevated-2);
   border: none;
   border-radius: 8px;
   color: #a0a0b0;
@@ -289,7 +289,7 @@ function save() {
 
 .btn-primary {
   padding: 10px 16px;
-  background: #8b5cf6;
+  background: var(--color-accent);
   border: none;
   border-radius: 8px;
   color: #fff;
