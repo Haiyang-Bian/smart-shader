@@ -81,6 +81,13 @@ export function useSettings() {
     testResult.value = null
   }
 
+  // 仅清掉设置键（与"清空所有对话"分开；用于"忘记我"场景）
+  function purgeAllSettings() {
+    resetSettings()
+    showSettings.value = false
+    return true
+  }
+
   // 获取模型列表
   async function fetchModels() {
     if (settings.provider === 'builtin') return
@@ -188,6 +195,7 @@ export function useSettings() {
     loadSettings,
     saveSettings,
     resetSettings,
+    purgeAllSettings,
     fetchModels,
     onProviderChange,
     onTokenBlur,

@@ -234,6 +234,24 @@ export function useConversations() {
     return false
   }
 
+  async function purgeAll(): Promise<{ success: boolean }> {
+    try {
+      await $fetch('/api/privacy/purge', { method: 'POST', body: { confirm: true } })
+    } catch (e) {
+      // best-effort: even if the server call fails the local copy should still be cleared
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY)
+      localStorage.removeItem(CURRENT_ID_KEY)
+      try {
+        localStorage.removeItem('shader-chat-history')
+      } catch (_e) { /* legacy key may not exist */ }
+    }
+    conversations.value = []
+    currentId.value = null
+    return { success: true }
+  }
+
   return {
     conversations,
     currentId,
@@ -248,6 +266,7 @@ export function useConversations() {
     updateTitle,
     autoUpdateTitle,
     updateMessages,
-    clearAllConversations
+    clearAllConversations,
+    purgeAll
   }
 }

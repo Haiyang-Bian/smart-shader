@@ -105,6 +105,12 @@
         <button class="btn-primary" @click="save">保存</button>
       </div>
 
+      <details class="form-group danger-zone">
+        <summary>危险操作</summary>
+        <p class="hint">清空所有数据会同时删除服务端数据库与浏览器本地存储中的所有对话和设置。</p>
+        <button class="btn-danger" @click="purgeEverything">🗑 清空所有数据</button>
+      </details>
+
       <div v-if="testResult" :class="['test-result', testResult.success ? 'success' : 'error']">
         {{ testResult.message }}
       </div>
@@ -129,6 +135,7 @@ const {
   isFixedTempModel,
   saveSettings,
   resetSettings,
+  purgeAllSettings,
   fetchModels,
   onProviderChange,
   onTokenBlur,
@@ -136,6 +143,26 @@ const {
 } = useSettings()
 
 const toast = useCustomToast()
+const { confirm } = useConfirmDialog()
+
+async function purgeEverything() {
+  const ok = await confirm({
+    title: '清空所有数据',
+    message: '这会同时删除服务端保存的所有对话、消息和日志，以及浏览器本地的设置与历史。此操作不可恢复，是否继续？',
+    confirmText: '确认清空',
+    cancelText: '取消',
+    type: 'danger'
+  })
+  if (!ok) return
+  purgeAllSettings()
+  try {
+    await $fetch('/api/privacy/purge', { method: 'POST', body: { confirm: true } })
+  } catch (e) {
+    // 即使服务端清除失败，至少本地已经清空
+  }
+  toast.success('本地数据已清除')
+  location.reload()
+}
 
 function save() {
   const msg = saveSettings()
@@ -299,6 +326,42 @@ function save() {
 
 .btn-primary:disabled {
   opacity: 0.5;
+}
+
+.danger-zone {
+  border-top: 1px solid var(--color-bg-elevated-2);
+  margin: 0;
+  padding: 16px 20px;
+}
+
+.danger-zone summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: #ef4444;
+  margin-bottom: 12px;
+  user-select: none;
+}
+
+.danger-zone .hint {
+  font-size: 12px;
+  color: #a0a0b0;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.btn-danger {
+  padding: 10px 16px;
+  background: #ef4444;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
 }
 
 .test-result {
