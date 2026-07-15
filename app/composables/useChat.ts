@@ -182,6 +182,25 @@ export function useChat(conversationId?: Ref<string | null>) {
     }
   }
 
+  // 分享 shader: 调用 /api/share 拿到 URL, 复制到剪贴板。
+  // 返回 { url } 成功 / null 失败。
+  async function shareShader(msg: Message): Promise<{ url: string } | null> {
+    const code = msg.shaderCode
+    if (!code) return null
+    try {
+      const res = await $fetch<{ id: string; url: string }>('/api/share', {
+        method: 'POST',
+        body: { code, title: msg.content?.slice(0, 80) || '' }
+      })
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(res.url).catch(() => {})
+      }
+      return res
+    } catch (e) {
+      return null
+    }
+  }
+
   // 处理滚动
   function onMessagesScroll(e: Event) {
     const el = e.target as HTMLElement
@@ -497,6 +516,7 @@ export function useChat(conversationId?: Ref<string | null>) {
     clearChat,
     regenerate,
     copyMessage,
+    shareShader,
     onMessagesScroll,
     startStreaming,
     stopStreaming,

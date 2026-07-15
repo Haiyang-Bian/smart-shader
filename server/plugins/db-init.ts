@@ -36,5 +36,14 @@ export default defineNitroPlugin(() => {
     );
     CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+
+    CREATE TABLE IF NOT EXISTS shared_shaders (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      title TEXT,
+      created_at INTEGER NOT NULL,
+      views INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_shared_shaders_created_at ON shared_shaders(created_at DESC);
   `)
 })

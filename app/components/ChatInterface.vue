@@ -128,6 +128,7 @@ v-if="msg.agentMeta?.role && msg.agentMeta.role !== 'system'"
               <div v-if="msg.role === 'assistant' && !msg.isStreaming" class="message-actions">
                 <button @click="regenerate(msg)">🔄 重新生成</button>
                 <button @click="copyMessage(msg)">📋 复制</button>
+                <button v-if="msg.shaderCode" @click="handleShare(msg)">🔗 分享</button>
               </div>
             </div>
           </div>
@@ -309,6 +310,7 @@ const {
   clearChat,
   regenerate,
   copyMessage,
+  shareShader,
   onMessagesScroll,
   startStreaming,
   stopStreaming,
@@ -371,6 +373,15 @@ async function clearAllAndClose() {
   if (await clearAllConversations()) {
     loadMessages()
     showConversations.value = false
+  }
+}
+
+async function handleShare(msg) {
+  const result = await shareShader(msg)
+  if (result?.url) {
+    toast.success(`已复制分享链接：${result.url}`)
+  } else {
+    toast.error('分享失败，请稍后再试')
   }
 }
 
