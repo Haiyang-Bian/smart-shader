@@ -3,6 +3,34 @@ import type { Conversation, Message, AISettings } from '~/types'
 const STORAGE_KEY = 'shader-conversations'
 const CURRENT_ID_KEY = 'shader-current-conversation'
 
+// ===== Pure helpers (module-scoped for unit tests) =====
+
+export function generateTitle(): string {
+  const now = new Date()
+  const timeStr = now.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+  return `对话 ${timeStr}`
+}
+
+export function generateTitleFromContent(content: string): string {
+  // 清理内容
+  const cleanContent = content
+    .replace(/```[\s\S]*?```/g, '') // 移除代码块
+    .replace(/\[code\][\s\S]*?\[\/code\]/g, '') // 移除 [code] 标签
+    .replace(/[\n\r]/g, ' ') // 替换换行
+    .trim()
+
+  // 取前 20 个字符
+  if (cleanContent.length <= 20) {
+    return cleanContent || '新对话'
+  }
+  return cleanContent.substring(0, 20) + '...'
+}
+
+// ===== Composable =====
+
 export function useConversations() {
   const { confirm } = useConfirmDialog()
   const conversations = ref<Conversation[]>([])
@@ -204,32 +232,6 @@ export function useConversations() {
       return true
     }
     return false
-  }
-
-  // 生成默认标题
-  function generateTitle(): string {
-    const now = new Date()
-    const timeStr = now.toLocaleTimeString('zh-CN', {
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-    return `对话 ${timeStr}`
-  }
-
-  // 从内容生成标题
-  function generateTitleFromContent(content: string): string {
-    // 清理内容
-    const cleanContent = content
-      .replace(/```[\s\S]*?```/g, '') // 移除代码块
-      .replace(/\[code\][\s\S]*?\[\/code\]/g, '') // 移除 [code] 标签
-      .replace(/[\n\r]/g, ' ') // 替换换行
-      .trim()
-
-    // 取前 20 个字符
-    if (cleanContent.length <= 20) {
-      return cleanContent || '新对话'
-    }
-    return cleanContent.substring(0, 20) + '...'
   }
 
   return {

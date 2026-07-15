@@ -1,5 +1,56 @@
 import type { Message, ChatRequestBody, AISettings, ToolCall, ToolResult } from '~/types'
 
+// ===== Pure helpers (module-scoped so they can be unit-tested without Vue context) =====
+
+export function safeParseArgs(argsStr: string | undefined): any {
+  if (!argsStr) return {}
+  try {
+    const cleaned = argsStr.trim()
+    return JSON.parse(cleaned)
+  } catch (e) {
+    try {
+      const withoutCodeBlock = argsStr.replace(/```[\s\S]*?```/g, '').trim()
+      if (withoutCodeBlock) {
+        return JSON.parse(withoutCodeBlock)
+      }
+    } catch (e2) {
+      // ignore
+    }
+    return {}
+  }
+}
+
+export function parseToolCalls(message: Message): ToolCall[] {
+  if (message.toolCalls && Array.isArray(message.toolCalls)) {
+    return message.toolCalls.map(tc => ({
+      id: tc.id,
+      name: tc.name || tc.function?.name || '',
+      arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.function?.arguments || {})
+    }))
+  }
+  return []
+}
+
+export function formatToolResults(results: ToolResult[]): string {
+  if (results.length === 0) return ''
+
+  let formatted = '\n\n[工具执行结果]\n'
+
+  for (const result of results) {
+    formatted += `\n工具: ${result.name}\n`
+    if (result.error) {
+      formatted += `错误: ${result.error}\n`
+    } else if (result.result) {
+      const resultText = typeof result.result === 'string' ? result.result : (result.result.text || JSON.stringify(result.result))
+      formatted += `结果: ${resultText}\n`
+    }
+  }
+
+  return formatted
+}
+
+// ===== Composable =====
+
 export function useChat(conversationId?: Ref<string | null>) {
   const { updateMessages, currentMessages, currentId } = useConversations()
   const { confirm } = useConfirmDialog()
@@ -146,56 +197,6 @@ export function useChat(conversationId?: Ref<string | null>) {
     } else {
       autoScroll.value = true
     }
-  }
-
-  // 安全解析 JSON 参数
-  function safeParseArgs(argsStr: string | undefined): any {
-    if (!argsStr) return {}
-    try {
-      const cleaned = argsStr.trim()
-      return JSON.parse(cleaned)
-    } catch (e) {
-      try {
-        const withoutCodeBlock = argsStr.replace(/```[\s\S]*?```/g, '').trim()
-        if (withoutCodeBlock) {
-          return JSON.parse(withoutCodeBlock)
-        }
-      } catch (e2) {
-        // 忽略
-      }
-      return {}
-    }
-  }
-
-  // 解析工具调用
-  function parseToolCalls(message: Message): ToolCall[] {
-    if (message.toolCalls && Array.isArray(message.toolCalls)) {
-      return message.toolCalls.map(tc => ({
-        id: tc.id,
-        name: tc.name || tc.function?.name || '',
-        arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.function?.arguments || {})
-      }))
-    }
-    return []
-  }
-
-  // 格式化工具执行结果
-  function formatToolResults(results: ToolResult[]): string {
-    if (results.length === 0) return ''
-
-    let formatted = '\n\n[工具执行结果]\n'
-
-    for (const result of results) {
-      formatted += `\n工具: ${result.name}\n`
-      if (result.error) {
-        formatted += `错误: ${result.error}\n`
-      } else if (result.result) {
-        const resultText = typeof result.result === 'string' ? result.result : (result.result.text || JSON.stringify(result.result))
-        formatted += `结果: ${resultText}\n`
-      }
-    }
-
-    return formatted
   }
 
   // 开始流式请求

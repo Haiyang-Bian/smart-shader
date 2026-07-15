@@ -12,6 +12,19 @@ async function reportLog(level: string, source: string, message: string, metadat
   } catch (e) {}
 }
 
+// ===== Pure helpers (module-scoped for unit tests) =====
+
+export function parseReviewResult(content: string): { verdict: 'PASS' | 'FAIL' | null; feedback: string } {
+  const verdictMatch = content.match(/VERDICT\s*:\s*(PASS|FAIL)/i)
+  if (verdictMatch?.[1]) {
+    return {
+      verdict: verdictMatch[1].toUpperCase() as 'PASS' | 'FAIL',
+      feedback: content.replace(/VERDICT\s*:\s*(PASS|FAIL)/i, '').trim()
+    }
+  }
+  return { verdict: null, feedback: content }
+}
+
 // Agent 系统提示词
 const AGENT_SYSTEM_PROMPT = `你是一个智能着色器开发助手，由两个内部角色协同工作：
 
@@ -59,17 +72,6 @@ export function useAgent() {
     if (role === 'reviewer') return '🔍'
     if (role === 'system') return '⚙️'
     return '✨'
-  }
-
-  function parseReviewResult(content: string): { verdict: 'PASS' | 'FAIL' | null; feedback: string } {
-    const verdictMatch = content.match(/VERDICT\s*:\s*(PASS|FAIL)/i)
-    if (verdictMatch?.[1]) {
-      return {
-        verdict: verdictMatch[1].toUpperCase() as 'PASS' | 'FAIL',
-        feedback: content.replace(/VERDICT\s*:\s*(PASS|FAIL)/i, '').trim()
-      }
-    }
-    return { verdict: null, feedback: content }
   }
 
   // 流式调用 chat API
