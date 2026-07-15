@@ -80,3 +80,40 @@ export function validateSettingsForProvider(provider: string, token: string): st
   }
   return null
 }
+
+// Shape a tool definitions list into the format each provider expects.
+// OpenAI-family (moonshot/openai/openrouter/local) use the nested function form;
+// Anthropic uses a flat schema with input_schema.
+export function formatToolsForProvider(provider: string, tools: Array<{ name: string; description: string; parameters: unknown }>): unknown {
+  if (provider === 'anthropic') {
+    return tools.map(t => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.parameters
+    }))
+  }
+  // OpenAI / Moonshot / OpenRouter / local all use the OpenAI function-calling format.
+  return tools.map(t => ({
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters
+    }
+  }))
+}
+
+// Extract tool calls from an Anthropic non-streaming response content array.
+export function extractAnthropicToolCalls(content: Array<{ type: string; id?: string; name?: string; input?: unknown }>): Array<{ id: string; name: string; arguments: string }> {
+  const calls: Array<{ id: string; name: string; arguments: string }> = []
+  for (const block of content) {
+    if (block.type === 'tool_use' && block.id && block.name) {
+      calls.push({
+        id: block.id,
+        name: block.name,
+        arguments: JSON.stringify(block.input ?? {})
+      })
+    }
+  }
+  return calls
+}

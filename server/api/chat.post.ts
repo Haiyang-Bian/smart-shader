@@ -1,7 +1,7 @@
 import { defineEventHandler, readBody } from 'h3'
 import { getDb } from '../utils/db'
 import { logInfo, logError, logWarn } from '../utils/logger'
-import { getDefaultApiUrl, buildAuthHeaders, isFixedTemperatureModel, validateSettingsForProvider } from '../utils/llm/registry'
+import { getDefaultApiUrl, buildAuthHeaders, isFixedTemperatureModel, validateSettingsForProvider, formatToolsForProvider, extractAnthropicToolCalls } from '../utils/llm/registry'
 import { extractShaderCode } from '../utils/llm/shader'
 import { fetchWithRetry } from '../utils/retry'
 
@@ -601,7 +601,7 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
             try {
               const parsed = JSON.parse(data)
 
-              // 检查是否有工具调用 (Kimi format)
+              // 检查是否有工具调用 (Kimi / OpenAI format)
               if (parsed.choices?.[0]?.delta?.tool_calls) {
                 const deltaToolCalls = parsed.choices[0].delta.tool_calls
                 for (const tc of deltaToolCalls) {
@@ -619,10 +619,34 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
                 continue
               }
 
+              // Anthropic streaming tool_use events.
+              if (settings.provider === 'anthropic' && parsed.type) {
+                if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'tool_use') {
+                  toolCalls.push({
+                    id: parsed.content_block.id,
+                    name: parsed.content_block.name,
+                    arguments: '' // populated by input_json_delta events
+                  })
+                  continue
+                }
+                if (parsed.type === 'input_json_delta' && toolCalls.length > 0) {
+                  toolCalls[toolCalls.length - 1].arguments += parsed.partial_json || ''
+                  continue
+                }
+              }
+
               let content = ''
 
               if (settings.provider === 'anthropic') {
-                content = parsed.delta?.text || parsed.content_block?.text || ''
+                if (parsed.type === 'content_block_delta') {
+                  content = parsed.delta?.text || parsed.content_block?.text || ''
+                } else if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'text') {
+                  content = parsed.content_block.text || ''
+                } else if (parsed.type === 'message_start') {
+                  content = ''
+                } else {
+                  content = parsed.delta?.text || parsed.content_block?.text || ''
+                }
               } else {
                 content = parsed.choices?.[0]?.delta?.content || ''
               }
@@ -739,6 +763,9 @@ async function handleNormalResponse(messages: any[], settings: any, enableTools:
         arguments: args
       }
     })
+  } else if (settings.provider === 'anthropic' && Array.isArray(data.content)) {
+    // Anthropic tool_use blocks live alongside text blocks in data.content[].
+    toolCalls = extractAnthropicToolCalls(data.content)
   }
 
   if (settings.provider === 'anthropic') {
@@ -805,7 +832,7 @@ function prepareRequestBody(messages: any[], settings: any, enableTools: boolean
 
   // 添加工具支持
   if (enableTools) {
-    body.tools = TOOLS
+    body.tools = formatToolsForProvider(settings.provider, TOOLS)
   }
 
   return body
