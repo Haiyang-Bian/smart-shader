@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody } from 'h3'
-import { logInfo, logError } from '../utils/logger'
+import { logError } from '../utils/logger'
+import { getDefaultApiUrl } from '../utils/llm/registry'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -13,8 +14,8 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    const apiUrl = customUrl || getDefaultApiUrl(provider)
-    
+    const apiUrl = customUrl || getDefaultApiUrl(provider, 'auth')
+
     switch (provider) {
       case 'openai':
         return await testOpenAI(apiUrl, token)
@@ -55,18 +56,6 @@ export default defineEventHandler(async (event) => {
     }
   }
 })
-
-function getDefaultApiUrl(provider: string): string {
-  const urls: Record<string, string> = {
-    'openai': 'https://api.openai.com/v1/models',
-    'anthropic': 'https://api.anthropic.com/v1/models',
-    'google': 'https://generativelanguage.googleapis.com/v1beta/models',
-    'moonshot': 'https://api.moonshot.cn/v1/models',
-    'openrouter': 'https://openrouter.ai/api/v1/auth/key',
-    'local': 'http://localhost:11434/api/tags'
-  }
-  return urls[provider] || ''
-}
 
 async function testOpenAI(url: string, token: string) {
   const response = await fetch(url, {

@@ -1,6 +1,7 @@
 import { defineEventHandler, readBody } from 'h3'
 import { getDb } from '../utils/db'
 import { logInfo, logError } from '../utils/logger'
+import { getDefaultApiUrl, buildAuthHeaders, isFixedTemperatureModel, validateSettingsForProvider } from '../utils/llm/registry'
 
 // 工具定义
 const TOOLS = [
@@ -278,12 +279,9 @@ export default defineEventHandler(async (event) => {
     }
 
     // 验证设置
-    if (!settings.token) {
-      throw createError({ statusCode: 400, message: '请先配置 API Token' })
-    }
-
-    if (settings.provider === 'moonshot' && !settings.token.trim().startsWith('sk-')) {
-      throw createError({ statusCode: 400, message: 'Moonshot API Token 应以 sk- 开头' })
+    const validationError = validateSettingsForProvider(settings.provider, settings.token)
+    if (validationError) {
+      throw createError({ statusCode: 400, message: validationError })
     }
 
     // 如果包含图片但模型不支持，给出提示
@@ -761,21 +759,7 @@ async function handleNormalResponse(messages: any[], settings: any, enableTools:
 
 // 准备请求头
 function prepareHeaders(settings: any): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-
-  switch (settings.provider) {
-    case 'openai':
-    case 'moonshot':
-    case 'openrouter':
-      headers['Authorization'] = `Bearer ${settings.token.trim()}`
-      break
-    case 'anthropic':
-      headers['x-api-key'] = settings.token.trim()
-      headers['anthropic-version'] = '2023-06-01'
-      break
-  }
-
-  return headers
+  return buildAuthHeaders(settings.provider, settings.token)
 }
 
 // 准备请求体
@@ -817,21 +801,11 @@ function prepareRequestBody(messages: any[], settings: any, enableTools: boolean
   return body
 }
 
-// 检查固定temperature模型
-function isFixedTemperatureModel(model: string): boolean {
-  return ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'].some(m => model.includes(m))
-}
-
-// 获取默认API URL
-function getDefaultApiUrl(provider: string): string {
-  const urls: Record<string, string> = {
-    'openai': 'https://api.openai.com/v1/chat/completions',
-    'anthropic': 'https://api.anthropic.com/v1/messages',
-    'moonshot': 'https://api.moonshot.cn/v1/chat/completions',
-    'openrouter': 'https://openrouter.ai/api/v1/chat/completions',
-    'local': 'http://localhost:11434/v1/chat/completions'
-  }
-  return urls[provider] || ''
+// 提取 GLSL 代码块（支持 ```glsl / ```shader / <shader>...</shader>）。
+export function extractShaderCode(content: string): string | null {
+  const match = content.match(/```(?:glsl|shader)\n?([\s\S]*?)```/) ||
+                content.match(/<shader>([\s\S]*?)<\/shader>/)
+  return match?.[1] ? match[1].trim() : null
 }
 
 // ==================== Database Helpers ====================

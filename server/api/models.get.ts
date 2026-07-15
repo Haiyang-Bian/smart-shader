@@ -1,4 +1,5 @@
 import { defineEventHandler, getQuery } from 'h3'
+import { getDefaultApiUrl } from '../utils/llm/registry'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -29,7 +30,7 @@ export default defineEventHandler(async (event) => {
 })
 
 async function fetchModels(provider: string, token: string, customUrl?: string): Promise<any[]> {
-  const apiUrl = customUrl || getDefaultApiUrl(provider)
+  const apiUrl = customUrl || getDefaultApiUrl(provider, 'models')
 
   switch (provider) {
     case 'openai':
@@ -47,18 +48,6 @@ async function fetchModels(provider: string, token: string, customUrl?: string):
     default:
       return []
   }
-}
-
-function getDefaultApiUrl(provider: string): string {
-  const urls: Record<string, string> = {
-    'openai': 'https://api.openai.com/v1/models',
-    'anthropic': 'https://api.anthropic.com/v1/models',
-    'google': 'https://generativelanguage.googleapis.com/v1beta/models',
-    'moonshot': 'https://api.moonshot.cn/v1/models',
-    'openrouter': 'https://openrouter.ai/api/v1/models',
-    'local': 'http://localhost:11434/api/tags'
-  }
-  return urls[provider] || ''
 }
 
 async function fetchOpenAIModels(url: string, token: string) {
