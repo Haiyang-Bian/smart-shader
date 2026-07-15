@@ -32,7 +32,8 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
-    adminPassword: process.env.NUXT_ADMIN_PASSWORD || 'admin123'
+    adminPassword: process.env.NUXT_ADMIN_PASSWORD || 'admin123',
+    rateLimitPerMinute: Number(process.env.NUXT_RATE_LIMIT_PER_MINUTE) || 20
   },
 
   // Global stylesheet with design tokens (loaded on both server and client).
