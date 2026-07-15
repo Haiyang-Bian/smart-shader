@@ -528,6 +528,25 @@ npm run preview
 
 ---
 
+## ⚠️ 重要：环境变量
+
+| 变量名 | 说明 | 默认值 | 是否必填 |
+|--------|------|--------|----------|
+| `NUXT_ADMIN_PASSWORD` | Admin 后台登录密码。未设置时后台完全禁用。 | — | **生产环境必填** |
+| `NUXT_RATE_LIMIT_PER_MINUTE` | 单 IP 对 `/api/chat` 等 LLM 端点的每分钟请求上限 | `20` | 可选 |
+
+> ⚠️ **生产环境警告**：若 `NODE_ENV=production` 且 `NUXT_ADMIN_PASSWORD` 仍为默认值 `admin123`，启动时会向 stdout 输出警告。请务必设置一个强密码。
+
+## 🔒 数据隐私
+
+应用采用双层持久化（详见下方「数据流设计」）：
+- **本地（localStorage）**：用户的主数据存储
+- **服务端（SQLite，`.data/admin.db`）**：审计副本
+
+如果想彻底删除数据（包括服务端副本），打开右上角 **⚙️ 设置 → 展开"危险操作" → 点 "🗑 清空所有数据"**。该操作会调用 `/api/privacy/purge` 在事务中清空 `messages`、`conversations`、`logs` 三张表，然后清空 localStorage 并刷新页面。此操作不可恢复。
+
+---
+
 ## 📄 许可证
 
 MIT License

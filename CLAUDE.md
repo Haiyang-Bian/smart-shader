@@ -23,6 +23,13 @@ npm run preview
 
 # Static generation (not typically used)
 npm run generate
+
+# Unit tests (vitest)
+npm test          # one-shot
+npm run test:watch
+
+# Lint
+npm run lint
 ```
 
 ## High-Level Architecture
@@ -85,4 +92,11 @@ When adding or modifying message fields, update:
 
 ## Environment Variables
 
-- `NUXT_ADMIN_PASSWORD` — Sets the admin dashboard password. If omitted, defaults to `admin123`.
+- `NUXT_ADMIN_PASSWORD` — Sets the admin dashboard password. **Must be explicitly set in production** — when `NODE_ENV=production` and this is still the default `admin123`, the server logs a warning at startup. When unset, the admin dashboard is fully disabled (the middleware rejects every request).
+- `NUXT_RATE_LIMIT_PER_MINUTE` — Per-IP request budget for `/api/chat`, `/api/generate-shader`, and `/api/admin/login`. Default `20`. The limiter is in-memory and single-process.
+
+## Persistence Model
+
+- `localStorage` keys: `shader-conversations`, `shader-current-conversation`, `shader-settings`, legacy `shader-chat-history` (auto-migrated).
+- SQLite (`.data/admin.db`) holds a server-side shadow copy of conversations, messages, and logs so the admin dashboard can review raw AI responses without relying on the browser.
+- To delete **everything** (both copies): call `POST /api/privacy/purge { confirm: true }`. The same flow is wired into ⚙️ Settings → "危险操作" → "🗑 清空所有数据".
