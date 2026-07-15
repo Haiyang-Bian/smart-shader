@@ -6,20 +6,20 @@
         <button
           class="history-btn"
           :disabled="!canUndo"
-          @click="$emit('undo')"
           title="撤销 (Ctrl+Z)"
+          @click="$emit('undo')"
         >
           ↩️
         </button>
         <button
           class="history-btn"
           :disabled="!canRedo"
-          @click="$emit('redo')"
           title="重做 (Ctrl+Y)"
+          @click="$emit('redo')"
         >
           ↪️
         </button>
-        <button class="history-btn" @click="showList = !showList" title="查看历史">
+        <button class="history-btn" title="查看历史" @click="showList = !showList">
           📋
         </button>
       </div>

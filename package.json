@@ -7,10 +7,14 @@
     "build": "nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
-    "preview": "nuxt preview"
+    "lint": "eslint .",
+    "preview": "nuxt preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@nuxt/content": "^3.12.0",
+    "@nuxt/eslint": "^1.16.0",
     "@nuxt/ui": "^4.6.0",
     "better-sqlite3": "^12.8.0",
     "monaco-editor": "^0.55.1",

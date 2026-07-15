@@ -2,9 +2,9 @@
   <div class="app">
     <!-- 侧边栏 - 代码和预览 -->
     <aside
+      ref="sidebarEl"
       class="sidebar custom-scrollbar"
       :class="{ collapsed: sidebarCollapsed, resizing: isResizingSidebar }"
-      ref="sidebarEl"
     >
       <div class="sidebar-header">
         <button class="toggle-btn" @click="sidebarCollapsed = !sidebarCollapsed">
@@ -16,7 +16,7 @@
 
       <div v-if="!sidebarCollapsed" class="sidebar-content">
         <!-- 预览区 -->
-        <div class="preview-section" ref="previewSectionEl">
+        <div ref="previewSectionEl" class="preview-section">
           <div class="section-title">🎨 实时预览</div>
           <ShaderRenderer
             ref="shaderRenderer"
@@ -45,18 +45,18 @@
         />
 
         <!-- 代码区 -->
-        <div class="code-section" ref="codeSectionEl">
+        <div ref="codeSectionEl" class="code-section">
           <div class="section-header">
             <span class="section-title">📝 代码</span>
             <div class="code-actions">
               <button
                 class="icon-btn"
-                @click="saveToHistory"
                 title="保存当前版本"
+                @click="saveToHistory"
               >
                 💾
               </button>
-              <button class="icon-btn" @click="resetShader" title="重置">
+              <button class="icon-btn" title="重置" @click="resetShader">
                 ↺
               </button>
             </div>

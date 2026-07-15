@@ -19,13 +19,13 @@
         <button
           class="agent-toggle"
           :class="{ active: agentModeEnabled }"
-          @click="agentModeEnabled = !agentModeEnabled"
           title="智能体模式：AI自动写代码、验证、改错"
+          @click="agentModeEnabled = !agentModeEnabled"
         >
           <span>{{ agentModeEnabled ? '🤖' : '👤' }}</span>
           <span>{{ agentModeEnabled ? 'Agent' : '对话' }}</span>
         </button>
-        <button v-if="messages.length > 1" class="action-btn" @click="clearChat" title="清空对话">
+        <button v-if="messages.length > 1" class="action-btn" title="清空对话" @click="clearChat">
           <span>🗑️</span>
         </button>
         <button class="settings-btn" @click="showSettings = true">
@@ -78,7 +78,8 @@
             </div>
             <div class="message-content">
               <!-- Agent 角色徽章 -->
-              <div v-if="msg.agentMeta?.role && msg.agentMeta.role !== 'system'"
+              <div
+v-if="msg.agentMeta?.role && msg.agentMeta.role !== 'system'"
                    class="agent-role-badge"
                    :class="msg.agentMeta.role">
                 {{ msg.agentMeta.role === 'coder' ? 'Coder' : 'Reviewer' }} · 第 {{ msg.agentMeta.round }} 轮
@@ -97,15 +98,15 @@
               <!-- 消息内容 -->
               <div class="bubble" :class="{ 'streaming': msg.isStreaming }">
                 <div v-if="msg.isStreaming && !msg.content" class="typing-indicator">
-                  <span></span><span></span><span></span>
+                  <span/><span/><span/>
                 </div>
                 <div v-else>
                   <!-- 图片 -->
                   <div v-if="msg.image" class="message-image">
-                    <img :src="msg.image" alt="渲染效果" />
+                    <img :src="msg.image" alt="渲染效果" >
                   </div>
                   <!-- 文本 -->
-                  <div v-if="msg.content" class="message-text" v-html="formatMessageSafe(msg.content)"></div>
+                  <div v-if="msg.content" class="message-text" v-html="formatMessageSafe(msg.content)"/>
                 </div>
 
                 <!-- 着色器标签 -->
@@ -151,7 +152,7 @@
         </div>
       </div>
 
-      <div ref="bottomEl"></div>
+      <div ref="bottomEl"/>
     </div>
 
     <!-- 输入区 -->
@@ -167,8 +168,8 @@
       <!-- 待发送图片预览 -->
       <div v-if="pendingImage" class="pending-image">
         <div class="image-preview">
-          <img :src="pendingImage.dataUrl" alt="截图" />
-          <button class="remove-image" @click="removePendingImage" title="移除图片">✕</button>
+          <img :src="pendingImage.dataUrl" alt="截图" >
+          <button class="remove-image" title="移除图片" @click="removePendingImage">✕</button>
         </div>
         <span class="image-hint">📷 截图将随消息一起发送给AI</span>
       </div>
@@ -177,7 +178,7 @@
       <div v-if="pendingCode" class="pending-code">
         <div class="code-preview-header">
           <span>📝 代码已附加</span>
-          <button class="remove-code" @click="removePendingCode" title="移除代码">✕</button>
+          <button class="remove-code" title="移除代码" @click="removePendingCode">✕</button>
         </div>
         <pre class="code-preview">{{ pendingCode.slice(0, 200) }}{{ pendingCode.length > 200 ? '...' : '' }}</pre>
       </div>
@@ -196,18 +197,18 @@
       <!-- 输入框 -->
       <div class="input-row">
         <textarea
+          ref="inputEl"
           v-model="input"
           :placeholder="pendingImage ? '描述你对这个效果的想法，比如【颜色太亮了，想要暗一点】...' : placeholderText"
-          @keydown.enter.prevent="handleEnter"
           :disabled="isStreaming && !isAgentRunning"
           rows="1"
-          ref="inputEl"
           class="custom-scrollbar"
+          @keydown.enter.prevent="handleEnter"
         />
         <button
           class="send-btn"
-          @click="send"
           :disabled="(!input.trim() && !pendingImage) || (isStreaming && !isAgentRunning)"
+          @click="send"
         >
           <span v-if="isStreaming || isAgentRunning" class="stop-icon" @click.stop="handleStop">⏹</span>
           <span v-else>➤</span>
@@ -233,8 +234,8 @@
           accept="image/*"
           style="display: none"
           @change="handleFileUpload"
-        />
-        <button class="upload-btn" @click="$refs.fileInput.click()" :disabled="isStreaming || !!pendingImage">
+        >
+        <button class="upload-btn" :disabled="isStreaming || !!pendingImage" @click="$refs.fileInput.click()">
           <span>📷</span>
           <span>上传图片</span>
         </button>

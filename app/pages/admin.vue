@@ -1,11 +1,11 @@
 <script setup lang="ts">
 const password = ref('')
 const storedPassword = ref('')
-if (process.client) {
+if (import.meta.client) {
   storedPassword.value = sessionStorage.getItem('admin-password') || ''
 }
 watch(storedPassword, (val) => {
-  if (process.client) {
+  if (import.meta.client) {
     if (val) sessionStorage.setItem('admin-password', val)
     else sessionStorage.removeItem('admin-password')
   }
@@ -125,7 +125,7 @@ onUnmounted(() => {
   <div class="admin-page">
     <div v-if="!isLoggedIn" class="login-panel">
       <h1>后台管理登录</h1>
-      <input v-model="password" type="password" placeholder="输入管理员密码" @keyup.enter="login" />
+      <input v-model="password" type="password" placeholder="输入管理员密码" @keyup.enter="login" >
       <button @click="login">登录</button>
     </div>
     <div v-else class="admin-layout">
@@ -148,7 +148,7 @@ onUnmounted(() => {
                 <option value="WARN">WARN</option>
                 <option value="ERROR">ERROR</option>
               </select>
-              <button class="refresh-btn" @click="fetchLogs" :disabled="logLoading">
+              <button class="refresh-btn" :disabled="logLoading" @click="fetchLogs">
                 {{ logLoading ? '刷新中...' : '刷新' }}
               </button>
             </div>
@@ -188,7 +188,7 @@ onUnmounted(() => {
               <div class="conv-list custom-scrollbar">
                 <div class="list-header">
                   <span>对话列表</span>
-                  <button class="refresh-btn small" @click="fetchConversations" :disabled="convLoading">
+                  <button class="refresh-btn small" :disabled="convLoading" @click="fetchConversations">
                     {{ convLoading ? '刷新中...' : '刷新' }}
                   </button>
                 </div>
@@ -209,7 +209,7 @@ onUnmounted(() => {
                 <h3>{{ conversationDetail.conversation.title }}</h3>
                 <div v-for="msg in conversationDetail.messages" :key="msg.id" class="msg-item" :class="msg.role">
                   <div class="msg-header">{{ msg.role }} · {{ new Date(msg.created_at).toLocaleString() }}</div>
-                  <div v-if="msg.image" class="msg-image"><img :src="msg.image" /></div>
+                  <div v-if="msg.image" class="msg-image"><img :src="msg.image" ></div>
                   <div v-if="msg.content" class="msg-content">{{ msg.content }}</div>
                   <div v-if="msg.reasoning" class="msg-reasoning"><strong>思考：</strong>{{ msg.reasoning }}</div>
                   <div v-if="msg.shader_code" class="msg-shader"><pre>{{ msg.shader_code }}</pre></div>

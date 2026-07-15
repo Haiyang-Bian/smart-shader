@@ -29,9 +29,9 @@
           <button
             v-if="settings.provider !== 'builtin'"
             class="refresh-btn"
-            @click="fetchModels"
             :disabled="fetchingModels || !settings.token"
             title="刷新模型列表"
+            @click="fetchModels"
           >
             🔄
           </button>
@@ -49,7 +49,7 @@
             :type="showToken ? 'text' : 'password'"
             :placeholder="tokenPlaceholder"
             @blur="onTokenBlur"
-          />
+          >
           <button @click="showToken = !showToken">
             {{ showToken ? '🙈' : '👁️' }}
           </button>
@@ -69,7 +69,7 @@
             max="2"
             step="0.1"
             :disabled="isFixedTempModel"
-          />
+          >
           <small>较低值更专注，较高值更有创意</small>
         </div>
 
@@ -81,7 +81,7 @@
             min="256"
             max="4096"
             step="256"
-          />
+          >
         </div>
 
         <div class="form-group">
@@ -89,7 +89,7 @@
           <input
             v-model="settings.customUrl"
             placeholder="https://api.example.com/v1"
-          />
+          >
         </div>
       </details>
 
@@ -97,8 +97,8 @@
         <button class="btn-secondary" @click="resetSettings">重置</button>
         <button
           class="btn-primary"
-          @click="testConnection"
           :disabled="testing || settings.provider === 'builtin'"
+          @click="testConnection"
         >
           {{ testing ? '测试中...' : '测试连接' }}
         </button>

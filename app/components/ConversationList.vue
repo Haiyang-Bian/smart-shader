@@ -2,7 +2,7 @@
   <div class="conversation-list">
     <div class="conversation-header">
       <h3>对话列表</h3>
-      <button class="new-chat-btn" @click="createNewConversation" title="新建对话">
+      <button class="new-chat-btn" title="新建对话" @click="createNewConversation">
         <span>+</span>
         <span>新对话</span>
       </button>
@@ -21,12 +21,12 @@
         <div class="conv-content">
           <div v-if="editingId === conv.id" class="conv-edit">
             <input
+              ref="titleInput"
               v-model="editingTitle"
               @keyup.enter="saveTitle"
               @keyup.esc="cancelEdit"
               @click.stop
-              ref="titleInput"
-            />
+            >
             <button @click.stop="saveTitle">✓</button>
             <button @click.stop="cancelEdit">✕</button>
           </div>
@@ -41,16 +41,16 @@
         <div class="conv-actions" @click.stop>
           <button
             class="action-btn"
-            @click="startEdit(conv)"
             title="重命名"
+            @click="startEdit(conv)"
           >
             ✏️
           </button>
           <button
             class="action-btn delete"
-            @click="confirmDelete(conv.id)"
             title="删除"
             :disabled="sortedConversations.length === 1"
+            @click="confirmDelete(conv.id)"
           >
             🗑️
           </button>

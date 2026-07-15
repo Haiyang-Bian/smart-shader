@@ -1,11 +1,8 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  modules: [
-    '@nuxt/content',
-    ['@nuxt/ui', {
-      fonts: false
-    }]
-  ],
+  modules: ['@nuxt/content', ['@nuxt/ui', {
+    fonts: false
+  }], '@nuxt/eslint'],
   
   devtools: { enabled: false },
   
@@ -32,11 +29,6 @@ export default defineNuxtConfig({
         { name: 'description', content: 'AI-powered GLSL shader generator with live preview' }
       ],
     }
-  },
-
-  // 或者如果模块有配置，设为 false
-  ui: {
-    fonts: false
   },
 
   runtimeConfig: {

@@ -4,10 +4,10 @@
     <div class="editor-toolbar">
       <span class="lang-badge">GLSL</span>
       <div class="toolbar-actions">
-        <button class="tool-btn" @click="formatCode" title="格式化代码">
+        <button class="tool-btn" title="格式化代码" @click="formatCode">
           ✨ 格式化
         </button>
-        <button class="tool-btn primary" @click="sendToChat" title="将代码发送到对话">
+        <button class="tool-btn primary" title="将代码发送到对话" @click="sendToChat">
           💬 发送到对话
         </button>
       </div>

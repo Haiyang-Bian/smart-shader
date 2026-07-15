@@ -13,25 +13,25 @@
     <div class="shader-toolbar">
       <button
         class="toolbar-btn"
-        @click="takeScreenshot"
         title="截图预览"
         :disabled="!state.ready"
+        @click="takeScreenshot"
       >
         📷 截图
       </button>
       <button
         class="toolbar-btn primary"
-        @click="sendToChat"
         title="将当前渲染效果发送到对话，让AI改进"
         :disabled="!state.ready"
+        @click="sendToChat"
       >
         💬 发送到对话
       </button>
       <button
         class="toolbar-btn"
         :class="{ 'recording': state.isRecording }"
-        @click="toggleRecording"
         :disabled="!state.ready"
+        @click="toggleRecording"
       >
         <span v-if="state.isRecording">⏹ 停止 ({{ formatTime(state.recordTime) }})</span>
         <span v-else>🎥 录屏</span>
@@ -55,14 +55,14 @@
       </details>
     </div>
     <div v-else-if="!state.ready" class="shader-loading">
-      <span class="spinner"></span>
+      <span class="spinner"/>
       <p>初始化 WebGL...</p>
     </div>
 
     <!-- 截图预览弹窗 -->
     <div v-if="state.screenshotUrl" class="screenshot-modal" @click.self="closeScreenshot">
       <div class="screenshot-content">
-        <img :src="state.screenshotUrl" alt="截图" />
+        <img :src="state.screenshotUrl" alt="截图" >
         <div class="screenshot-actions">
           <button class="btn-primary" @click="confirmSendToChat">
             💬 发送到对话

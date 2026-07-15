@@ -524,7 +524,7 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
   let fullContent = ''
   let inShaderBlock = false
   let shaderBuffer = ''
-  let toolCalls: any[] = []
+  const toolCalls: any[] = []
   const rawLines: string[] = []
 
   return new ReadableStream({
