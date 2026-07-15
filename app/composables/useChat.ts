@@ -498,6 +498,73 @@ export function useChat(conversationId?: Ref<string | null>) {
     }
   }
 
+  // 生成 N 个并行的变体结果。
+  // 每个变体是一个独立的 assistant Message，共享 variantGroup。
+  // 部分失败也能完成：失败的变体不会出现在结果里。
+  async function generateVariants(prompt: string, count: number = 3, settings: any = null) {
+    if (!prompt?.trim() || count < 1) return
+    const group = 'v-' + Date.now().toString(36)
+    const userMsgId = 'u-' + Date.now()
+    messages.value.push({ id: userMsgId, role: 'user', content: prompt, timestamp: Date.now() })
+
+    // Create N placeholder assistant messages so the UI shows them as "streaming".
+    const placeholders: Message[] = []
+    for (let i = 0; i < count; i++) {
+      const id = 'a-' + Date.now() + '-' + i
+      placeholders.push({
+        id,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        isStreaming: true,
+        variantGroup: group,
+        variantIndex: i
+      } as Message)
+    }
+    messages.value.push(...placeholders)
+
+    isStreaming.value = true
+    try {
+      const promises = placeholders.map(async (placeholder, index) => {
+        try {
+          const res = await $fetch<{ content: string; shaderCode?: string | null; model?: string }>(
+            '/api/chat',
+            {
+              method: 'POST',
+              body: {
+                messages: [{ role: 'user', content: prompt }],
+                settings,
+                stream: false
+              }
+            }
+          )
+          const idx = messages.value.findIndex(m => m.id === placeholder.id)
+          if (idx >= 0) {
+            messages.value[idx] = {
+              ...messages.value[idx],
+              content: res.content || '',
+              shaderCode: res.shaderCode || null,
+              isStreaming: false
+            }
+          }
+        } catch (e) {
+          const idx = messages.value.findIndex(m => m.id === placeholder.id)
+          if (idx >= 0) {
+            messages.value[idx] = {
+              ...messages.value[idx],
+              content: `❌ 变体 ${index + 1} 生成失败`,
+              isStreaming: false
+            }
+          }
+        }
+      })
+      await Promise.all(promises)
+      saveMessages()
+    } finally {
+      isStreaming.value = false
+    }
+  }
+
   return {
     messages,
     input,
@@ -517,6 +584,7 @@ export function useChat(conversationId?: Ref<string | null>) {
     regenerate,
     copyMessage,
     shareShader,
+    generateVariants,
     onMessagesScroll,
     startStreaming,
     stopStreaming,

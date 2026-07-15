@@ -69,6 +69,7 @@
         <div
           v-for="(msg, i) in messages"
           :key="msg.id || i"
+          v-show="!(msg.variantGroup && !messageHasVariants(msg))"
           class="message-wrapper"
           :class="[msg.role, msg.agentMeta?.role]"
         >
@@ -77,7 +78,26 @@
               {{ msg.role === 'user' ? '👤' : getAgentAvatar(msg.agentMeta?.role) }}
             </div>
             <div class="message-content">
-              <!-- Agent 角色徽章 -->
+              <!-- 变体网格：仅在变体组的第一条消息上渲染整个 group -->
+              <div v-if="msg.variantGroup && messageHasVariants(msg)" class="variant-grid">
+                <div
+                  v-for="v in variantsOf(msg)"
+                  :key="v.id"
+                  class="variant-cell"
+                >
+                  <div class="variant-header">变体 {{ (v.variantIndex || 0) + 1 }}</div>
+                  <div v-if="v.isStreaming" class="variant-loading">⏳ 生成中…</div>
+                  <div v-else class="variant-body">{{ v.content }}</div>
+                  <div v-if="v.shaderCode" class="variant-actions">
+                    <button @click="applyShader(v.shaderCode)">✨ 应用此版本</button>
+                    <button @click="handleShare(v)">🔗 分享</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 默认消息渲染（非变体消息才显示完整气泡；变体消息仅显示网格） -->
+              <template v-if="!msg.variantGroup">
+                <!-- Agent 角色徽章 -->
               <div
 v-if="msg.agentMeta?.role && msg.agentMeta.role !== 'system'"
                    class="agent-role-badge"
@@ -130,6 +150,7 @@ v-if="msg.agentMeta?.role && msg.agentMeta.role !== 'system'"
                 <button @click="copyMessage(msg)">📋 复制</button>
                 <button v-if="msg.shaderCode" @click="handleShare(msg)">🔗 分享</button>
               </div>
+              </template>
             </div>
           </div>
         </div>
@@ -213,6 +234,14 @@ v-if="msg.agentMeta?.role && msg.agentMeta.role !== 'system'"
         >
           <span v-if="isStreaming || isAgentRunning" class="stop-icon" @click.stop="handleStop">⏹</span>
           <span v-else>➤</span>
+        </button>
+        <button
+          class="variant-btn"
+          :disabled="(!input.trim()) || (isStreaming && !isAgentRunning)"
+          title="并行生成 3 个变体（消耗 3 次请求）"
+          @click="handleVariants"
+        >
+          🎲 3×
         </button>
       </div>
 
@@ -383,6 +412,14 @@ async function handleShare(msg) {
   } else {
     toast.error('分享失败，请稍后再试')
   }
+}
+
+async function handleVariants() {
+  const prompt = input.value.trim()
+  if (!prompt) return
+  input.value = ''
+  await generateVariants(prompt, 3, settings.provider === 'builtin' ? null : settings)
+  scrollToBottom()
 }
 
 // ============ 生命周期 ============
@@ -729,6 +766,22 @@ async function executeToolCalls(toolCalls) {
 }
 
 // ============ 工具函数 ============
+// Group adjacent assistant messages that share a variantGroup into a single
+// "variant group" so we can render them as a side-by-side grid.
+const variantGroups = computed(() => {
+  const map = new Map<string, Message[]>()
+  for (const m of messages.value) {
+    if (m.variantGroup) {
+      const arr = map.get(m.variantGroup) || []
+      arr.push(m)
+      map.set(m.variantGroup, arr)
+    }
+  }
+  return map
+})
+const messageHasVariants = (m: Message) => !!m.variantGroup && (variantGroups.value.get(m.variantGroup)?.[0]?.id === m.id)
+const variantsOf = (m: Message) => variantGroups.value.get(m.variantGroup || '') || []
+
 function scrollToBottom() {
   nextTick(() => {
     if (autoScroll.value && bottomEl.value) {
@@ -1144,6 +1197,63 @@ h1 {
 .apply-code-btn:hover {
   opacity: 0.9;
   transform: translateY(-1px);
+}
+
+/* 变体网格 */
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.variant-cell {
+  background: var(--color-bg-elevated-2);
+  border: 1px solid var(--color-bg-extra);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.variant-header {
+  font-size: 11px;
+  color: #a0a0b0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.variant-loading {
+  font-size: 13px;
+  color: #a0a0b0;
+  padding: 12px 0;
+}
+.variant-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #e5e5f0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.variant-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.variant-actions button {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--color-bg-extra);
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.variant-actions button:hover {
+  background: var(--color-accent);
+  color: #fff;
 }
 
 /* 消息操作 */

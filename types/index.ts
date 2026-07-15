@@ -23,6 +23,8 @@ export interface Message {
   toolCalls?: ToolCall[]
   toolResults?: ToolResult[]
   toolResultsProcessed?: boolean
+  variantGroup?: string
+  variantIndex?: number
 }
 
 export interface AgentMeta {
