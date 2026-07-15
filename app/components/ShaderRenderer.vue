@@ -288,9 +288,12 @@ async function confirmSendToChat() {
 }
 
 // ============ 视频录制功能 ============
+let pendingAutoDownload = false
+
 function toggleRecording() {
   if (state.isRecording) {
-    stopRecording()
+    // User-initiated stop: auto-download the result.
+    stopRecording(true)
   } else {
     startRecording()
   }
@@ -336,8 +339,15 @@ function startRecording() {
     }
   }
 
+  // onstop fires asynchronously after mediaRecorder.stop(); we read the latest
+  // pendingAutoDownload flag here so the user-initiated stop can auto-download
+  // while the 30s timeout can stop without saving.
   mediaRecorder.onstop = () => {
     state.recordedBlob = new Blob(recordedChunks, { type: selectedMimeType })
+    if (pendingAutoDownload) {
+      pendingAutoDownload = false
+      downloadVideo()
+    }
   }
 
   mediaRecorder.start(100)
@@ -346,16 +356,16 @@ function startRecording() {
   recordInterval = setInterval(() => {
     state.recordTime++
     if (state.recordTime >= 30) {
-      stopRecording()
+      stopRecording(false)
     }
   }, 1000)
 
   toast.info('开始录制，最长 30 秒')
 }
 
-function stopRecording() {
+function stopRecording(shouldAutoDownload = false) {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return
-
+  pendingAutoDownload = shouldAutoDownload
   mediaRecorder.stop()
   state.isRecording = false
 
@@ -364,7 +374,7 @@ function stopRecording() {
     recordInterval = null
   }
 
-  toast.success('录制完成，可以点击下载按钮保存')
+  toast.success(shouldAutoDownload ? '录制完成，开始下载' : '录制完成，可以点击下载按钮保存')
 }
 
 function downloadVideo() {
