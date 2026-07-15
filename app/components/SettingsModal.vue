@@ -85,6 +85,18 @@
         </div>
 
         <div class="form-group">
+          <label>Agent 最大迭代轮数: {{ settings.maxAgentRounds }}</label>
+          <input
+            v-model.number="settings.maxAgentRounds"
+            type="range"
+            min="1"
+            max="20"
+            step="1"
+          >
+          <span class="hint">Agent 模式下，Coder + Reviewer 之间的最大循环次数。</span>
+        </div>
+
+        <div class="form-group">
           <label>自定义 API URL（可选）</label>
           <input
             v-model="settings.customUrl"

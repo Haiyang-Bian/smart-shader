@@ -6,7 +6,8 @@ const defaultSettings: AISettings = {
   token: '',
   temperature: 0.7,
   maxTokens: 2048,
-  customUrl: ''
+  customUrl: '',
+  maxAgentRounds: 10
 }
 
 const defaultModels: Record<string, ModelInfo[]> = {

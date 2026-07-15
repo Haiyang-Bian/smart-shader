@@ -1,6 +1,6 @@
 import type { Message, ToolCall, ToolResult, AISettings } from '../../types'
 
-const MAX_AGENT_ROUNDS = 10
+const DEFAULT_MAX_AGENT_ROUNDS = 10
 
 async function reportLog(level: string, source: string, message: string, metadata?: any) {
   try {
@@ -454,8 +454,9 @@ export function useAgent() {
         }
 
         // 检查是否达到最大轮次
-        if (round.value >= MAX_AGENT_ROUNDS) {
-          callbacks.addSystemMessage(`⏸️ 已达最大迭代轮次 (${MAX_AGENT_ROUNDS})，Agent 暂停。`)
+        const maxRounds = settings.maxAgentRounds || DEFAULT_MAX_AGENT_ROUNDS
+        if (round.value >= maxRounds) {
+          callbacks.addSystemMessage(`⏸️ 已达最大迭代轮次 (${maxRounds})，Agent 暂停。`)
           isPaused.value = true
           break
         }

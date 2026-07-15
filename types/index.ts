@@ -39,6 +39,7 @@ export interface AISettings {
   temperature: number
   maxTokens: number
   customUrl: string
+  maxAgentRounds: number
 }
 
 export interface ProviderConfig {
