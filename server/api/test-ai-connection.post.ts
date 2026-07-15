@@ -1,6 +1,7 @@
 import { defineEventHandler, readBody } from 'h3'
 import { logError } from '../utils/logger'
 import { getDefaultApiUrl } from '../utils/llm/registry'
+import { fetchWithRetry } from '../utils/retry'
 
 export default defineEventHandler(async (event) => {
   try {
@@ -58,13 +59,13 @@ export default defineEventHandler(async (event) => {
 })
 
 async function testOpenAI(url: string, token: string) {
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`
     }
-  })
-  
+  }, { baseDelayMs: 500 })
+
   if (!response.ok) {
     if (response.status === 401) {
       return { success: false, message: 'Invalid API key' }
@@ -72,7 +73,7 @@ async function testOpenAI(url: string, token: string) {
     const error = await response.text()
     return { success: false, message: `API error: ${error}` }
   }
-  
+
   const data = await response.json()
   const models = data.data?.length || 0
   return {
@@ -83,7 +84,7 @@ async function testOpenAI(url: string, token: string) {
 
 async function testAnthropic(url: string, token: string) {
   const baseUrl = url.replace('/models', '')
-  const response = await fetch(`${baseUrl}/messages`, {
+  const response = await fetchWithRetry(`${baseUrl}/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -95,8 +96,8 @@ async function testAnthropic(url: string, token: string) {
       max_tokens: 1,
       messages: [{ role: 'user', content: 'Hi' }]
     })
-  })
-  
+  }, { baseDelayMs: 500 })
+
   if (!response.ok) {
     if (response.status === 401) {
       return { success: false, message: 'Invalid API key' }
@@ -107,7 +108,7 @@ async function testAnthropic(url: string, token: string) {
     }
     return { success: false, message: `API error: ${error}` }
   }
-  
+
   return {
     success: true,
     message: 'Connection successful! API key is valid.'
@@ -115,10 +116,10 @@ async function testAnthropic(url: string, token: string) {
 }
 
 async function testGoogle(url: string, token: string) {
-  const response = await fetch(`${url}?key=${token}`, {
+  const response = await fetchWithRetry(`${url}?key=${token}`, {
     method: 'GET'
-  })
-  
+  }, { baseDelayMs: 500 })
+
   if (!response.ok) {
     if (response.status === 400) {
       return { success: false, message: 'Invalid API key' }
@@ -126,7 +127,7 @@ async function testGoogle(url: string, token: string) {
     const error = await response.text()
     return { success: false, message: `API error: ${error}` }
   }
-  
+
   return {
     success: true,
     message: 'Connection successful! API key is valid.'
@@ -136,32 +137,32 @@ async function testGoogle(url: string, token: string) {
 // Moonshot 连接测试 - 修复认证问题
 async function testMoonshot(url: string, token: string) {
   const trimmedToken = token.trim()
-  
+
   console.log('Testing Moonshot connection:', { url, tokenLength: trimmedToken.length })
-  
-  const response = await fetch(url, {
+
+  const response = await fetchWithRetry(url, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${trimmedToken}`
     }
-  })
-  
+  }, { baseDelayMs: 500 })
+
   if (!response.ok) {
     const errorText = await response.text()
     console.error('Moonshot test error:', response.status, errorText)
-    
+
     let errorMsg = errorText
     try {
       const errorJson = JSON.parse(errorText)
       errorMsg = errorJson.error?.message || errorJson.message || errorText
     } catch {}
-    
+
     if (response.status === 401) {
       return { success: false, message: `Invalid API key: ${errorMsg}` }
     }
     return { success: false, message: `API error: ${errorMsg}` }
   }
-  
+
   const data = await response.json()
   const models = data.data?.length || 0
   return {
@@ -171,13 +172,13 @@ async function testMoonshot(url: string, token: string) {
 }
 
 async function testOpenRouter(url: string, token: string) {
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`
     }
-  })
-  
+  }, { baseDelayMs: 500 })
+
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       return { success: false, message: 'Invalid API key' }
@@ -185,7 +186,7 @@ async function testOpenRouter(url: string, token: string) {
     const error = await response.text()
     return { success: false, message: `API error: ${error}` }
   }
-  
+
   const data = await response.json()
   const label = data.data?.label || 'Unknown'
   return {
@@ -196,14 +197,14 @@ async function testOpenRouter(url: string, token: string) {
 
 async function testLocal(url: string) {
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: 'GET'
-    })
-    
+    }, { baseDelayMs: 500 })
+
     if (!response.ok) {
       return { success: false, message: 'Failed to connect to local server' }
     }
-    
+
     const data = await response.json()
     const models = data.models?.length || 0
     return {

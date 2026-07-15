@@ -1,5 +1,6 @@
 import { defineEventHandler, getQuery } from 'h3'
 import { getDefaultApiUrl } from '../utils/llm/registry'
+import { fetchWithRetry } from '../utils/retry'
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
@@ -51,9 +52,9 @@ async function fetchModels(provider: string, token: string, customUrl?: string):
 }
 
 async function fetchOpenAIModels(url: string, token: string) {
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: { 'Authorization': `Bearer ${token}` }
-  })
+  }, { baseDelayMs: 500 })
 
   if (!response.ok) throw new Error('Failed to fetch OpenAI models')
 
@@ -68,12 +69,12 @@ async function fetchOpenAIModels(url: string, token: string) {
 }
 
 async function fetchAnthropicModels(url: string, token: string) {
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: {
       'x-api-key': token,
       'anthropic-version': '2023-06-01'
     }
-  })
+  }, { baseDelayMs: 500 })
 
   if (!response.ok) throw new Error('Failed to fetch Anthropic models')
 
@@ -86,7 +87,7 @@ async function fetchAnthropicModels(url: string, token: string) {
 }
 
 async function fetchGoogleModels(url: string, token: string) {
-  const response = await fetch(`${url}?key=${token}`)
+  const response = await fetchWithRetry(`${url}?key=${token}`, {}, { baseDelayMs: 500 })
 
   if (!response.ok) throw new Error('Failed to fetch Google models')
 
@@ -99,9 +100,9 @@ async function fetchGoogleModels(url: string, token: string) {
 }
 
 async function fetchMoonshotModels(url: string, token: string) {
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: { 'Authorization': `Bearer ${token.trim()}` }
-  })
+  }, { baseDelayMs: 500 })
 
   if (!response.ok) {
     const error = await response.text()
@@ -121,9 +122,9 @@ async function fetchMoonshotModels(url: string, token: string) {
 }
 
 async function fetchOpenRouterModels(url: string, token: string) {
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: { 'Authorization': `Bearer ${token}` }
-  })
+  }, { baseDelayMs: 500 })
 
   if (!response.ok) throw new Error('Failed to fetch OpenRouter models')
 
@@ -136,7 +137,7 @@ async function fetchOpenRouterModels(url: string, token: string) {
 }
 
 async function fetchLocalModels(url: string) {
-  const response = await fetch(url)
+  const response = await fetchWithRetry(url, {}, { baseDelayMs: 500 })
 
   if (!response.ok) throw new Error('Failed to fetch local models')
 

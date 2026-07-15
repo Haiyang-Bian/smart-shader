@@ -1,8 +1,9 @@
 import { defineEventHandler, readBody } from 'h3'
 import { getDb } from '../utils/db'
-import { logInfo, logError } from '../utils/logger'
+import { logInfo, logError, logWarn } from '../utils/logger'
 import { getDefaultApiUrl, buildAuthHeaders, isFixedTemperatureModel, validateSettingsForProvider } from '../utils/llm/registry'
 import { extractShaderCode } from '../utils/llm/shader'
+import { fetchWithRetry } from '../utils/retry'
 
 // 工具定义
 const TOOLS = [
@@ -497,13 +498,17 @@ async function handleStreamResponse(messages: any[], settings: any, enableTools:
 
   const requestBody = prepareRequestBody(messages, settings, enableTools)
 
-  const response = await fetch(apiUrl, {
+  const response = await fetchWithRetry(apiUrl, {
     method: 'POST',
     headers: prepareHeaders(settings),
     body: JSON.stringify({
       ...requestBody,
       stream: true
     })
+  }, {
+    signal: event.node.req.signal,
+    baseDelayMs: 1000,
+    onRetry: info => logWarn('api/chat', `Retrying after ${info.reason}`, { attempt: info.attempt, delayMs: info.delayMs })
   })
 
   if (!response.ok) {
@@ -690,10 +695,14 @@ async function handleNormalResponse(messages: any[], settings: any, enableTools:
 
   const requestBody = prepareRequestBody(messages, settings, enableTools, customSystemPrompt)
 
-  const response = await fetch(apiUrl, {
+  const response = await fetchWithRetry(apiUrl, {
     method: 'POST',
     headers: prepareHeaders(settings),
     body: JSON.stringify(requestBody)
+  }, {
+    signal: event.node.req.signal,
+    baseDelayMs: 1000,
+    onRetry: info => logWarn('api/chat', `Retrying after ${info.reason}`, { attempt: info.attempt, delayMs: info.delayMs })
   })
 
   if (!response.ok) {
